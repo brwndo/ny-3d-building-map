@@ -74,7 +74,9 @@ Shared state (active performance metric, active filters, search query, selected 
 
 **buildings.geojson** — FeatureCollection, Point geometries, built from `25-asset-level-esg-data-NY.xlsx`'s "Asset-Level Data" sheet (**30 assets** as of the 2026-08-09 update — 25 original industrial assets plus 5 new Mixed-Use Residential/Commercial towers, NY-026–030) joined with the "Baseline & Targets" sheet (180 rows: 6 metrics × 30 assets). All sheets confirmed correctly joined for the new assets too — full data across every column, no gaps.
 
-Per feature, carried over from Asset-Level Data: Asset ID, Asset Name, Address, City, State, Zip, Property Type (7 distinct values now, including Mixed-Use Residential/Commercial), Floor Area, **Number of Floors** (range 1–25 — see §7 for how this drives height), all EN1/EUI/GH1/WT1/WT2/WS1 raw values, BC1.1/BC1.2/BC2 certification status, ENERGY STAR Score, Data Coverage %, Confidence Tier, Data Source, Last Updated.
+Per feature, carried over from Asset-Level Data: Asset ID, Asset Name, Address, City, State, Zip, Property Type (7 distinct values now, including Mixed-Use Residential/Commercial), Floor Area, **Number of Floors** (range 1–25 — see §7 for how this drives height), all EN1/EUI/GH1/WT1/WT2/WS1 raw values, BC1.1/BC1.2/BC2 certification status, ENERGY STAR Score, **12-Month Whole-Building Data Complete**, Data Coverage %, Confidence Tier, Data Source, Last Updated.
+
+`energyStarEligible` is derived at prep time as `score >= 75 AND twelveMonthDataComplete` — two independent gates, neither of them Data Coverage %. See requirements doc §5.6.
 
 Plus, joined in per baseline-covered metric (6 of them — see requirements doc §5.1): `Direction`, `Baseline Value`, `Current Value`, `Target Value`, `% Progress to Target`, `Variance vs Target`, plus a **pre-computed, direction-adjusted, clamped color band** (0–1 or discrete band index) per metric, so render-time code never has to branch on `Direction` or handle the >100%/negative clamping itself.
 
@@ -86,7 +88,7 @@ Plus, joined in from "Compliance Exposure (LL97)" (30 rows, Detail Panel display
 
 A small Python script (`openpyxl`) run ahead of time, not part of the running app. Latitude/longitude are already present in the source xlsx, so no geocoding step is needed:
 
-1. Read `25-asset-level-esg-data-NY.xlsx` ("Asset-Level Data" sheet, 30 rows including `Number of Floors`).
+1. Read `25-asset-level-esg-data-NY.xlsx` ("Asset-Level Data" sheet, 30 rows including `Number of Floors` and `12-Month Whole-Building Data Complete`).
 2. Read the "Baseline & Targets" sheet, pivot from long format (one row per asset per metric) to one baseline record per asset, keyed by metric name.
 3. Read the "Compliance Exposure (LL97)" sheet, one row per asset already.
 4. Join all three on Asset ID.
@@ -96,6 +98,8 @@ A small Python script (`openpyxl`) run ahead of time, not part of the running ap
 8. Drop both into `public/data/`.
 
 Static dataset for this phase — re-run manually if the source xlsx changes; no automated pipeline.
+
+A second one-time script, `scripts/add_twelve_month_column.py`, added the `12-Month Whole-Building Data Complete` column and its Legend & Notes entry. It edits the sheet XML inside the xlsx zip rather than using openpyxl: the workbook holds ~1,400 formulas *and* the cached results that `prepare_data.py` reads via `data_only=True`, and openpyxl can round-trip only one of the two — saving with `data_only=True` replaces formulas with values, saving without it drops every cached result and leaves the prep script reading `None`. Both edits are independently idempotent and the script backs the workbook up before its first write.
 
 ## 6. Zoom-Level Handling
 
@@ -109,7 +113,7 @@ Same visual treatment doesn't work at a state-wide zoom and a street-level zoom 
 
 Three independent layers, applied in order:
 
-1. **Visibility** (Property Details + Certifications filters) — city/state/type/floor-area, plus BC1.1/BC1.2/BC2/ENERGY-STAR-eligibility. Multi-select values OR within a field, fields AND together. Non-matching buildings aren't rendered. If zero buildings match, an `EmptyStateOverlay` message renders instead of a silent empty map.
+1. **Visibility** (Property Details + Certifications + Performance Band filters) — city/state/type/floor-area, plus BC1.1/BC1.2/BC2 and the selected metric's band. ENERGY STAR eligibility is **not** a filter — it's Detail Panel only (requirements doc §5.6). Multi-select values OR within a field, fields AND together. Non-matching buildings aren't rendered. If zero buildings match, an `EmptyStateOverlay` message renders instead of a silent empty map.
 2. **Fill color** (`getFillColor`) — the currently-selected performance metric, one of the 6 with baseline coverage. Default: ENERGY STAR Score. **Discrete, 3–4 band color scale** (not continuous) for at-a-glance readability. Two color models, matching the two target types in the data:
    - **Baseline-trajectory** (GHG Emissions combined, EUI, Water Use): band from `Variance vs Target`, direction-aware (`Direction` field), clamped at the scale's endpoints for >100%/negative progress.
    - **Fixed-goal** (ENERGY STAR Score, Waste Diversion Rate, Data Coverage): band from distance to a single portfolio-wide target value, direction-aware, same clamping. Now produces meaningful variation since the spreadsheet's `Target Value` fix (requirements doc §9).

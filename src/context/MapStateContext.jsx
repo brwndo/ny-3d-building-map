@@ -9,20 +9,31 @@ import {
   activeFieldCount,
   resolveState,
 } from '../data/filterSchema';
+import {
+  derivePortfolioGoals,
+  loadPortfolioGoals,
+  patchPortfolioGoal,
+  savePortfolioGoals,
+} from '../data/portfolioGoals';
 
 const MapStateContext = createContext(null);
 
-export function MapStateProvider({ buildings, boundary, children }) {
+export function MapStateProvider({ buildings, boundary, counties, children }) {
   const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
   const [hide, setHide] = useState(() => defaultsFor(HIDE_FIELDS));
   const [grey, setGrey] = useState(() => defaultsFor(GREY_FIELDS));
   const [selectedId, setSelectedId] = useState(null);
   const [flyToRequest, setFlyToRequest] = useState(null); // {coords, ts}
+  const [viewMode, setViewMode] = useState('map'); // 'map' | 'grid'
+  const [focusAssetId, setFocusAssetId] = useState(null); // {id, ts}
 
   // Freshness comparisons are relative to the date at load time, per spec.
   const loadedAt = useRef(new Date()).current;
 
   const features = buildings.features;
+
+  const defaultPortfolioGoals = useMemo(() => derivePortfolioGoals(features), [features]);
+  const [portfolioGoals, setPortfolioGoalsState] = useState(() => loadPortfolioGoals(features));
 
   // Option lists and range bounds, derived from the loaded dataset.
   const hideMeta = useMemo(() => deriveFieldMeta(HIDE_FIELDS, features), [features]);
@@ -85,9 +96,29 @@ export function MapStateProvider({ buildings, boundary, children }) {
     setGrey(defaultsFor(GREY_FIELDS));
   };
 
+  const setPortfolioGoal = useCallback((metricKeyToPatch, patch) => {
+    setPortfolioGoalsState((prev) => {
+      const next = patchPortfolioGoal(prev, metricKeyToPatch, patch);
+      savePortfolioGoals(next);
+      return next;
+    });
+  }, []);
+
+  const setPortfolioGoals = useCallback((nextGoals) => {
+    setPortfolioGoalsState(nextGoals);
+    savePortfolioGoals(nextGoals);
+  }, []);
+
+  const resetPortfolioGoals = useCallback(() => {
+    const next = derivePortfolioGoals(features);
+    setPortfolioGoalsState(next);
+    savePortfolioGoals(next);
+  }, [features]);
+
   const value = {
     buildings,
     boundary,
+    counties,
     features,
     visibleFeatures,
     datasetBounds,
@@ -108,7 +139,16 @@ export function MapStateProvider({ buildings, boundary, children }) {
     selectedFeature,
     flyToRequest,
     setFlyToRequest,
+    viewMode,
+    setViewMode,
+    focusAssetId,
+    setFocusAssetId,
     resetFilters,
+    portfolioGoals,
+    defaultPortfolioGoals,
+    setPortfolioGoal,
+    setPortfolioGoals,
+    resetPortfolioGoals,
   };
 
   return <MapStateContext.Provider value={value}>{children}</MapStateContext.Provider>;

@@ -1,13 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMapState } from '../context/MapStateContext';
 import { searchMatches } from '../data/filters';
 
 const MAX_RESULTS = 8;
 
-export default function SearchBox() {
-  const { features, setSelectedId, setFlyToRequest } = useMapState();
+export default function SearchBox({ autoFocus = false, onSelect }) {
+  const { features, setSelectedId, setFlyToRequest, viewMode, setFocusAssetId } = useMapState();
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
 
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -16,13 +21,19 @@ export default function SearchBox() {
 
   const select = (feature) => {
     setSelectedId(feature.properties.id);
-    setFlyToRequest({ coords: feature.geometry.coordinates, ts: Date.now() });
+    if (viewMode === 'map') {
+      setFlyToRequest({ coords: feature.geometry.coordinates, ts: Date.now() });
+    } else {
+      setFocusAssetId({ id: feature.properties.id, ts: Date.now() });
+    }
     setQuery('');
+    onSelect?.();
   };
 
   return (
     <div className="search-box">
       <input
+        ref={inputRef}
         type="search"
         placeholder="Search name, address, or Asset ID…"
         value={query}

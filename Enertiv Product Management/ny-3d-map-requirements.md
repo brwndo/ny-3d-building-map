@@ -12,6 +12,8 @@ Baseline & Targets provides, per asset per metric: `Direction`, `Baseline Value`
 
 `Number of Floors` column added and confirmed populated for all 30 assets. Range is 1–25 — see §3 for how this drives column height.
 
+`12-Month Whole-Building Data Complete` (Y/N) column added to `Asset-Level Data` (column AE) for all 30 assets — the second ENERGY STAR eligibility gate, see §5.6. Added by `scripts/add_twelve_month_column.py` rather than by hand; that script edits the sheet XML directly because the workbook is formula-driven and an openpyxl round-trip discards either the formulas or their cached values.
+
 Data prep is a one-time manual script (xlsx + baseline sheet → `buildings.geojson`), re-run manually by the requester if source data changes. Not automated, not part of the running app.
 
 ## 3. Map
@@ -46,7 +48,7 @@ Color logic splits into two groups, matching how the source data itself models t
 
 **Baseline-trajectory metrics** (GHG Emissions, EUI, Water Use) — per-asset baseline value in a start year, reduced to a per-asset target value in a target year. Color band = clamped position along `Variance vs Target`, direction-aware per the `Direction` field. Not the sheet's precomputed `Status` — that's shown only in the Detail Panel as a summary label.
 
-**Fixed-goal metrics** (ENERGY STAR Score, Waste Diversion Rate, Data Coverage) — a single portfolio-wide target, not a per-asset baseline trajectory. Color band = clamped distance to that one fixed target value, direction-aware. ENERGY STAR Score's fixed target of 75 also matches the real-world certification-eligibility threshold, so this isn't just a data-model convenience — it reflects how ENERGY STAR scores are actually evaluated in practice, since the score itself is already a relative/percentile number and doesn't have a meaningful "baseline year."
+**Fixed-goal metrics** (ENERGY STAR Score, Waste Diversion Rate, Data Coverage) — a single portfolio-wide target, not a per-asset baseline trajectory. Color band = clamped distance to that one fixed target value, direction-aware. ENERGY STAR Score's fixed target of 75 also matches the real-world certification-eligibility **score** threshold, so this isn't just a data-model convenience — it reflects how ENERGY STAR scores are actually evaluated in practice, since the score itself is already a relative/percentile number and doesn't have a meaningful "baseline year." Note that 75+ is only one of two eligibility gates — see §5.6.
 
 Only the 6 metrics with baseline coverage are selectable — same list as before, now split by group:
 
@@ -81,7 +83,7 @@ Option lists are derived dynamically from the dataset, and each field additional
 
 Because each certification is a separate field, they AND together per §5.5 — selecting BC1.1 and BC1.2 means "holds both," not "holds either." Certification status is always shown in the Detail Panel regardless of this filter's state.
 
-ENERGY STAR Score eligibility (75+) is **not** in this category. It is a derived threshold on a performance metric, not a held credential, and is expressed as the ENERGY STAR metric's `Target Met` band under §5.4a.
+ENERGY STAR certification eligibility is **not** in this category. It is a derived condition, not a held credential — see §5.6 for how it's computed and where it's shown.
 
 ### 5.4 Property Details (filter)
 - City
@@ -92,7 +94,7 @@ ENERGY STAR Score eligibility (75+) is **not** in this category. It is a derived
 ### 5.4a Performance Band (visibility filter)
 Sits alongside the Performance Metric selector and hides buildings whose band, **for the currently selected metric**, isn't checked. Options are the fixed four bands from §5.1 (Target Met / On Track / At Risk / Off Track), not dataset-derived, so the option list doesn't shift when the metric changes.
 
-Switching the metric re-targets an active band selection. Metric = ENERGY STAR Score with band = Target Met is exactly the old "ENERGY STAR eligible (75+)" filter, since that band is defined as `score / 75 >= 1`.
+Switching the metric re-targets an active band selection. Metric = ENERGY STAR Score with band = Target Met selects the assets scoring 75+, since that band is defined as `score / 75 >= 1`. That is the score gate only — it is **not** the same as certification eligibility, which also requires a complete 12-month data year (§5.6).
 
 ### 5.5 Filter Composition
 Three mechanisms, applied together. **One rule governs every field**, in both the visibility and confidence groups: an unset field is off, multiple values within one field OR together, and different fields AND together.
@@ -107,10 +109,23 @@ The Filter Panel is grouped by **effect** rather than by topic, in that same ord
 
 **Empty state:** if active visibility filters match zero buildings, show a message overlay (e.g. "No buildings match your filters") rather than a silent empty map.
 
+### 5.6 ENERGY STAR Certification Eligibility (Detail Panel only)
+
+Not a filter, not a map visual. Two **independent** gates, both required:
+
+1. **ENERGY STAR Score ≥ 75** — the 1–100 percentile score
+2. **12-Month Whole-Building Data Complete** — 12 full consecutive months of whole-building data across all fuel types, a Y/N column on `Asset-Level Data`
+
+This is deliberately **not** derived from Data Coverage (%). Coverage measures how much floor area / consumption is verified, for audit-defensibility; the 12-month flag asks whether a complete year exists at all. The two move independently in the dataset: NY-023 has 93.8% coverage with an incomplete year, NY-026 has 48.2% coverage with a complete one.
+
+The Detail Panel shows the score, the 12-month flag, and the resulting eligibility, naming the failed gate when an asset doesn't qualify (e.g. "No — 12-month data incomplete"). Of the 11 assets scoring 75+, 3 are blocked on incomplete data — NY-017, NY-019, NY-028 — leaving 8 eligible. Before this gate existed all 11 were labelled eligible, including two whose Confidence Tier is `Missing`.
+
+Real certification also requires PE/RA verification and occupancy minimums during the performance period. Those are workflow state rather than asset data and are out of scope.
+
 ## 6. Interaction
 
 - **Hover**: popup with address + the currently-selected performance metric + confidence tier
-- **Click**: opens a side panel with full detail — all performance metrics, certification status, confidence breakdown, and compliance exposure (see §6.1)
+- **Click**: opens a side panel with full detail — all performance metrics, certification status including ENERGY STAR eligibility (see §5.6), confidence breakdown, and compliance exposure (see §6.1)
 - **Search**: by building name, address, or Asset ID; case-insensitive substring match
 - **Legend**: static key for the active color scale, not interactive
 

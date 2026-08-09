@@ -30,17 +30,30 @@ The script reads three sheets (Asset-Level Data, Baseline & Targets, Compliance
 Exposure (LL97)), joins on Asset ID, precomputes the direction-adjusted clamped
 color band per metric per asset, and writes `public/data/buildings.geojson`.
 It also prints a verification diff of computed bands vs the sheet's Status
-column.
+column, plus the ENERGY STAR eligibility split.
+
+`scripts/add_twelve_month_column.py` is a separate one-time script that added
+the `12-Month Whole-Building Data Complete` column to the workbook. It is
+idempotent and already applied — you only need it if the column is ever lost.
+It rewrites the sheet XML inside the xlsx directly, because the workbook is
+formula-driven and openpyxl cannot preserve formulas and their cached results
+at the same time.
 
 The NY boundary comes from the US Census `cb_2023_us_state_500k` shapefile
-(State layer, filtered to STATEFP 36). If `scripts/source/cb_2023_us_state_500k.shp`
-is present, the script regenerates `public/data/ny-state-boundary.geojson` too:
+(State layer, filtered to STATEFP 36). County boundaries come from
+`cb_2023_us_county_500k` (same filter). If the shapefiles are present under
+`scripts/source/`, the script also regenerates `public/data/ny-state-boundary.geojson`
+and `public/data/ny-counties.geojson`:
 
 ```bash
 mkdir -p scripts/source
 curl -fsSL -o scripts/source/cb_2023_us_state_500k.zip \
   "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_state_500k.zip"
 unzip -o -d scripts/source scripts/source/cb_2023_us_state_500k.zip
+
+curl -fsSL -o scripts/source/cb_2023_us_county_500k.zip \
+  "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_county_500k.zip"
+unzip -o -d scripts/source scripts/source/cb_2023_us_county_500k.zip
 ```
 
 ## Visual encoding
@@ -56,6 +69,10 @@ unzip -o -d scripts/source scripts/source/cb_2023_us_state_500k.zip
 - **Height** — number of floors, sqrt-normalized between 150 m and 1200 m so
   the 1–3 floor industrial assets stay distinguishable next to the 8–25 floor
   towers. Independent of the active metric.
+
+ENERGY STAR certification eligibility is Detail Panel only — no map or filter
+role. It requires both a score of 75+ and a complete 12-month whole-building
+data year, which is a separate column from Data Coverage %.
 
 ## Stack
 

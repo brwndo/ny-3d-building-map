@@ -1,25 +1,23 @@
 import { useEffect, useState } from 'react';
 import { MapStateProvider } from './context/MapStateContext';
-import MapView from './components/MapView';
-import FilterPanel from './components/FilterPanel';
-import SearchBox from './components/SearchBox';
-import Legend from './components/Legend';
-import DetailPanel from './components/DetailPanel';
-import EmptyStateOverlay from './components/EmptyStateOverlay';
+import AppShell from './components/AppShell';
 
 export default function App() {
   const [buildings, setBuildings] = useState(null);
   const [boundary, setBoundary] = useState(null);
+  const [counties, setCounties] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     Promise.all([
       fetch('/data/buildings.geojson').then((r) => r.json()),
       fetch('/data/ny-state-boundary.geojson').then((r) => r.json()),
+      fetch('/data/ny-counties.geojson').then((r) => r.json()),
     ])
-      .then(([b, n]) => {
+      .then(([b, n, c]) => {
         setBuildings(b);
         setBoundary(n);
+        setCounties(c);
       })
       .catch((err) => setError(String(err)));
   }, []);
@@ -31,20 +29,13 @@ export default function App() {
       </div>
     );
   }
-  if (!buildings || !boundary) {
+  if (!buildings || !boundary || !counties) {
     return <div className="load-screen">Loading portfolio…</div>;
   }
 
   return (
-    <MapStateProvider buildings={buildings} boundary={boundary}>
-      <div className="app-layout">
-        <MapView />
-        <FilterPanel />
-        <SearchBox />
-        <Legend />
-        <DetailPanel />
-        <EmptyStateOverlay />
-      </div>
+    <MapStateProvider buildings={buildings} boundary={boundary} counties={counties}>
+      <AppShell />
     </MapStateProvider>
   );
 }

@@ -1,26 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Map, useControl } from 'react-map-gl/maplibre';
 import { MapboxOverlay } from '@deck.gl/mapbox';
-import { ColumnLayer, GeoJsonLayer } from '@deck.gl/layers';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { useMapState } from '../context/MapStateContext';
-import { colorForFeature, GREY, heightForFloors } from '../data/colorScale';
+import { featuresToExtrudedPolygons } from '../data/buildingFootprints';
+import { enhanceBasemap } from '../data/enhanceBasemapStyle';
+import {
+  createBoundaryLayer,
+  createBuildingsLayer,
+  createCountyBoundariesLayer,
+  createCountyLabelsLayer,
+  createOutsideMaskLayer,
+  createSelectedHighlightLayer,
+} from '../data/mapLayers';
 import HoverPopup from './HoverPopup';
+import MapNavigation from './MapNavigation';
 
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
-// Camera stays inside NY (with a margin); the base map still renders neighbors.
-const NY_MAX_BOUNDS = [
-  [-81.0, 39.8],
-  [-70.2, 45.6],
+const REGIONAL_MAX_BOUNDS = [
+  [-85.0, 38.0],
+  [-65.0, 47.0],
 ];
-const INITIAL_VIEW = { longitude: -75.0, latitude: 42.4, zoom: 6.3, pitch: 50, bearing: 0 };
-
-// Footprint sizing: meters-based with pixel clamps so columns stay a visible
-// dot zoomed out and don't fill the screen zoomed in.
-const BASE_RADIUS_M = 120;
-const RADIUS_MIN_PX = 4;
-const RADIUS_MAX_PX = 40;
+const INITIAL_VIEW = { longitude: -75.0, latitude: 42.4, zoom: 6.3, pitch: 0, bearing: 0 };
 
 function DeckGLOverlay(props) {
   const overlay = useControl(() => new MapboxOverlay({ ...props, interleaved: false }));
@@ -28,95 +30,133 @@ function DeckGLOverlay(props) {
   return null;
 }
 
-function clampedRadius(zoom, latitude) {
-  const metersPerPixel =
-    (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / Math.pow(2, zoom);
-  return Math.min(
-    Math.max(BASE_RADIUS_M, RADIUS_MIN_PX * metersPerPixel),
-    RADIUS_MAX_PX * metersPerPixel
-  );
-}
-
 export default function MapView() {
   const {
     boundary,
+    counties,
     visibleFeatures,
-    datasetBounds,
     metricKey,
     isGreyed,
+    selectedFeature,
     setSelectedId,
     flyToRequest,
   } = useMapState();
 
   const mapRef = useRef(null);
+  const containerRef = useRef(null);
   const [viewState, setViewState] = useState(INITIAL_VIEW);
   const [hoverInfo, setHoverInfo] = useState(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      mapRef.current?.resize();
+    });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (flyToRequest && mapRef.current) {
       mapRef.current.flyTo({
         center: flyToRequest.coords,
         zoom: 13,
-        pitch: 50,
+        pitch: 0,
         duration: 1400,
       });
     }
   }, [flyToRequest]);
 
-  const radius = clampedRadius(viewState.zoom, viewState.latitude);
+  const resetNorth = () => {
+    if (mapRef.current) {
+      mapRef.current.easeTo({ bearing: 0, duration: 300 });
+      return;
+    }
+    setViewState((prev) => ({ ...prev, bearing: 0 }));
+  };
+
+  const zoomIn = () => {
+    mapRef.current?.zoomIn({ duration: 200 });
+  };
+
+  const zoomOut = () => {
+    mapRef.current?.zoomOut({ duration: 200 });
+  };
+
+  const handleMapLoad = (evt) => {
+    enhanceBasemap(evt.target);
+  };
+
+  const buildingPolygons = useMemo(
+    () => featuresToExtrudedPolygons(visibleFeatures, viewState.zoom, viewState.latitude),
+    [visibleFeatures, viewState.zoom, viewState.latitude]
+  );
 
   const layers = useMemo(() => {
-    return [
-      new GeoJsonLayer({
-        id: 'ny-boundary',
-        data: boundary,
-        stroked: true,
-        filled: false,
-        getLineColor: [100, 116, 139, 180],
-        lineWidthMinPixels: 1.5,
-      }),
-      new ColumnLayer({
-        id: 'buildings',
-        data: visibleFeatures,
-        diskResolution: 24,
-        extruded: true,
-        pickable: true,
-        radius,
-        getPosition: (f) => f.geometry.coordinates,
-        getElevation: (f) =>
-          heightForFloors(f.properties.floors, datasetBounds.minFloors, datasetBounds.maxFloors),
-        getFillColor: (f) =>
-          isGreyed(f.properties) ? GREY : colorForFeature(f.properties, metricKey),
+    const stack = [];
+
+    const mask = createOutsideMaskLayer(boundary);
+    if (mask) stack.push(mask);
+
+    const countyLines = createCountyBoundariesLayer(counties, viewState.zoom);
+    if (countyLines) stack.push(countyLines);
+
+    const countyLabels = createCountyLabelsLayer(counties, viewState.zoom);
+    if (countyLabels) stack.push(countyLabels);
+
+    stack.push(createBoundaryLayer(boundary));
+    stack.push(
+      createBuildingsLayer(buildingPolygons, {
+        metricKey,
+        isGreyed,
         onHover: (info) => setHoverInfo(info.object ? info : null),
         onClick: (info) => info.object && setSelectedId(info.object.properties.id),
-        updateTriggers: {
-          getFillColor: [metricKey, isGreyed],
-        },
-      }),
-    ];
+      })
+    );
+
+    const highlight = createSelectedHighlightLayer(
+      selectedFeature,
+      viewState.zoom,
+      viewState.latitude
+    );
+    if (highlight) stack.push(highlight);
+
+    return stack;
   }, [
     boundary,
-    visibleFeatures,
-    radius,
+    counties,
+    buildingPolygons,
     metricKey,
     isGreyed,
-    datasetBounds,
+    selectedFeature,
+    viewState.zoom,
+    viewState.latitude,
     setSelectedId,
   ]);
 
   return (
-    <div className="map-container">
+    <div className="map-container" ref={containerRef}>
       <Map
         ref={mapRef}
         {...viewState}
         onMove={(evt) => setViewState(evt.viewState)}
+        onLoad={handleMapLoad}
         mapStyle={MAP_STYLE}
-        maxBounds={NY_MAX_BOUNDS}
+        maxBounds={REGIONAL_MAX_BOUNDS}
+        maxPitch={0}
         style={{ width: '100%', height: '100%' }}
       >
         <DeckGLOverlay layers={layers} />
       </Map>
       {hoverInfo && <HoverPopup info={hoverInfo} />}
+      <MapNavigation
+        bearing={viewState.bearing ?? 0}
+        onResetNorth={resetNorth}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+      />
     </div>
   );
 }

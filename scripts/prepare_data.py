@@ -23,6 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 XLSX = os.path.join(ROOT, "Enertiv Product Management", "25-asset-level-esg-data-NY.xlsx")
 OUT_DIR = os.path.join(ROOT, "public", "data")
 BOUNDARY_SHP = os.path.join(ROOT, "scripts", "source", "cb_2023_us_state_500k.shp")
+COUNTY_SHP = os.path.join(ROOT, "scripts", "source", "cb_2023_us_county_500k.shp")
 
 # Metric display strings in "Baseline & Targets" col C -> internal keys
 METRIC_KEYS = {
@@ -103,6 +104,14 @@ def none_str(value):
     return None if text == "None" or text == "" else text
 
 
+def yes_no(value):
+    """Y/N flag columns. Anything unrecognized is treated as not-confirmed:
+    an absent answer is not evidence that the data is complete."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().upper() in {"Y", "YES", "TRUE", "1"}
+
+
 def compute_metric(row):
     """Returns the per-metric record incl. the normalized, direction-adjusted,
     clamped color value p and its band label."""
@@ -151,6 +160,10 @@ def build_features(wb):
         asset_id = a["Asset ID"]
         c = compliance[asset_id]
         score = int(a["ENERGY STAR Score (1-100)"])
+        # Certification has two independent gates. The 12-month whole-building
+        # data flag is its own column, deliberately not derived from
+        # Data Coverage (%) - see scripts/add_twelve_month_column.py.
+        twelve_month_complete = yes_no(a["12-Month Whole-Building Data Complete"])
         props = {
             "id": asset_id,
             "name": a["Asset Name"],
@@ -180,7 +193,8 @@ def build_features(wb):
                 "bc2": none_str(a["BC2 - Ongoing Certification"]),
             },
             "energyStarScore": score,
-            "energyStarEligible": score >= 75,
+            "twelveMonthDataComplete": twelve_month_complete,
+            "energyStarEligible": score >= 75 and twelve_month_complete,
             "dataCoverage": float(a["Data Coverage (%)"]),
             "confidenceTier": a["Confidence Tier"],
             "dataSource": a["Data Source"],
@@ -231,6 +245,82 @@ def verify_bands(features):
         print(f"  MISMATCH {asset_id} {key}: p={p:.3f} computed={band!r} sheet={status!r}")
 
 
+def verify_eligibility(features):
+    """ENERGY STAR eligibility needs both gates. Reports the split and names the
+    assets that clear the score but are blocked on incomplete data, since those
+    are the ones a score-only rule would have wrongly labelled eligible."""
+    props = [f["properties"] for f in features]
+    eligible = [p for p in props if p["energyStarEligible"]]
+    blocked = [
+        p for p in props if p["energyStarScore"] >= 75 and not p["twelveMonthDataComplete"]
+    ]
+    print(
+        f"Eligibility: {len(eligible)}/{len(props)} eligible "
+        f"({sum(1 for p in props if p['energyStarScore'] >= 75)} score 75+, "
+        f"{sum(1 for p in props if p['twelveMonthDataComplete'])} data complete)"
+    )
+    for p in sorted(blocked, key=lambda p: -p["energyStarScore"]):
+        print(
+            f"  BLOCKED {p['id']}: score {p['energyStarScore']} but 12-month data "
+            f"incomplete (coverage {p['dataCoverage']:.1%}, tier {p['confidenceTier']})"
+        )
+
+
+def _ring_centroid(ring):
+    """Planar centroid of a closed ring (GeoJSON [lng, lat] pairs)."""
+    pts = ring[:-1] if len(ring) > 1 and ring[0] == ring[-1] else ring
+    if not pts:
+        return 0.0, 0.0
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    return sum(xs) / len(xs), sum(ys) / len(ys)
+
+
+def _geometry_label_point(geometry):
+    if geometry["type"] == "Polygon":
+        return _ring_centroid(geometry["coordinates"][0])
+    if geometry["type"] == "MultiPolygon":
+        largest = max(geometry["coordinates"], key=lambda poly: len(poly[0]))
+        return _ring_centroid(largest[0])
+    return 0.0, 0.0
+
+
+def convert_counties():
+    if not os.path.exists(COUNTY_SHP):
+        print(f"County shapefile not found at {COUNTY_SHP} - skipping county conversion")
+        return
+    import shapefile
+
+    features = []
+    reader = shapefile.Reader(COUNTY_SHP)
+    for sr in reader.shapeRecords():
+        if sr.record["STATEFP"] != "36":
+            continue
+        geometry = sr.shape.__geo_interface__
+        lng, lat = _geometry_label_point(geometry)
+        name = sr.record["NAME"]
+        features.append({
+            "type": "Feature",
+            "geometry": geometry,
+            "properties": {
+                "name": name,
+                "countyfp": sr.record["COUNTYFP"],
+                "labelLng": round(lng, 5),
+                "labelLat": round(lat, 5),
+            },
+        })
+
+    if not features:
+        print("No NY counties found in shapefile")
+        return
+
+    geo = {"type": "FeatureCollection", "features": features}
+    out = os.path.join(OUT_DIR, "ny-counties.geojson")
+    with open(out, "w") as fh:
+        json.dump(geo, fh)
+    print(f"Wrote {out} ({len(features)} counties)")
+
+
 def convert_boundary():
     if not os.path.exists(BOUNDARY_SHP):
         print(f"Boundary shapefile not found at {BOUNDARY_SHP} - skipping boundary conversion")
@@ -263,6 +353,7 @@ def main():
     print(f"Built {len(features)} features")
 
     verify_bands(features)
+    verify_eligibility(features)
 
     out = os.path.join(OUT_DIR, "buildings.geojson")
     with open(out, "w") as fh:
@@ -270,6 +361,7 @@ def main():
     print(f"Wrote {out}")
 
     convert_boundary()
+    convert_counties()
 
 
 if __name__ == "__main__":
