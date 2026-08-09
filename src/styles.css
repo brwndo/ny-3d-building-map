@@ -1,0 +1,499 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+.app-layout,
+.map-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.load-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #64748b;
+}
+
+/* ---------- Filter panel (left) ---------- */
+
+.filter-panel {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  bottom: 16px;
+  width: 300px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  padding: 16px;
+  z-index: 10;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.filter-panel h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.filter-panel section {
+  border-top: 1px solid #f1f5f9;
+  padding: 12px 0;
+}
+
+.filter-panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  margin: 0 0 6px;
+}
+
+.filter-panel h3 {
+  font-size: 12px;
+  color: #64748b;
+  margin: 12px 0 4px;
+  font-weight: 600;
+}
+
+.hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0 0 8px;
+}
+
+/* Effect badges make the three mechanisms (hide / color / grey) legible at a
+   glance, since the checkbox affordance itself is identical across them. */
+.effect-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.effect-hides {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.effect-colors {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.effect-greys {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.results-readout {
+  font-size: 12px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 4px;
+}
+
+.results-readout strong {
+  color: #0f172a;
+}
+
+.readout-sub {
+  display: block;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+
+.filter-subgroup {
+  border-left: 2px solid #f1f5f9;
+  padding-left: 10px;
+  margin-top: 10px;
+}
+
+.subgroup-title {
+  color: #334155;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 11px;
+  margin-top: 0;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+
+select,
+input[type='number'],
+input[type='search'] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+  color: inherit;
+}
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.checkbox-row input[type='checkbox'] {
+  margin: 0;
+}
+
+.pct-input {
+  width: 60px !important;
+}
+
+.range-group label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #64748b;
+  margin-bottom: 6px;
+}
+
+.range-group input[type='range'] {
+  flex: 1;
+}
+
+.range-group input[type='number'] {
+  width: 90px;
+}
+
+/* ---------- Search (top center) ---------- */
+
+.search-box {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 360px;
+  z-index: 10;
+}
+
+.search-box input {
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  padding: 9px 12px;
+}
+
+.search-results {
+  margin-top: 4px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  overflow: hidden;
+}
+
+.search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.search-result:hover {
+  background: #f1f5f9;
+}
+
+.search-result-name {
+  display: block;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.search-result-sub {
+  display: block;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.search-empty {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #94a3b8;
+}
+
+/* ---------- Legend (bottom left) ---------- */
+
+.legend {
+  position: absolute;
+  bottom: 24px;
+  left: 332px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+  padding: 10px 14px;
+  z-index: 10;
+  font-size: 12px;
+}
+
+.legend-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 1px 0;
+}
+
+.legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-note {
+  margin-top: 6px;
+  color: #94a3b8;
+}
+
+/* ---------- Hover popup ---------- */
+
+.hover-popup {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
+  padding: 8px 10px;
+  font-size: 12px;
+  z-index: 20;
+  max-width: 260px;
+}
+
+.hover-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+/* ---------- Detail panel (right drawer) ---------- */
+
+.detail-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  bottom: 16px;
+  width: 380px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.14);
+  padding: 16px;
+  z-index: 15;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.detail-header h2 {
+  font-size: 16px;
+  margin: 0 0 4px;
+}
+
+.detail-sub {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.close-button {
+  background: #f1f5f9;
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: #475569;
+  flex-shrink: 0;
+}
+
+.detail-panel section {
+  border-top: 1px solid #f1f5f9;
+  margin-top: 14px;
+  padding-top: 10px;
+}
+
+.detail-panel h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #475569;
+  margin: 0 0 8px;
+}
+
+.detail-panel h4 {
+  font-size: 12px;
+  color: #64748b;
+  margin: 12px 0 4px;
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.detail-label {
+  color: #64748b;
+}
+
+.detail-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip {
+  display: inline-block;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.metric-card {
+  border: 1px solid #f1f5f9;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.metric-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.metric-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.progress-track {
+  height: 6px;
+  background: #f1f5f9;
+  border-radius: 3px;
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+/* ---------- Empty state ---------- */
+
+.empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.empty-card {
+  pointer-events: auto;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(15, 23, 42, 0.16);
+  padding: 24px 32px;
+  text-align: center;
+  max-width: 340px;
+}
+
+.empty-title {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.empty-card p {
+  color: #64748b;
+  font-size: 13px;
+  margin: 0 0 12px;
+}
+
+.empty-card button {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+}
