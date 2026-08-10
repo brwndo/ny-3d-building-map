@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import { DEFAULT_METRIC } from '../data/colorScale';
+import { blockerIdsFor } from '../data/aggregateStats';
 import { passesConfidence, passesVisibility } from '../data/filters';
 import {
   GREY_FIELDS,
@@ -15,17 +15,30 @@ import {
   patchPortfolioGoal,
   savePortfolioGoals,
 } from '../data/portfolioGoals';
+import {
+  bandForAsset,
+  createProgramContext,
+  getProgram,
+  governedMetricKeys,
+  loadProgramId,
+  resolveProgramGoals,
+  saveProgramId,
+  scoreAsset,
+} from '../data/goalPrograms';
 
 const MapStateContext = createContext(null);
 
 export function MapStateProvider({ buildings, boundary, counties, children }) {
-  const [metricKey, setMetricKey] = useState(DEFAULT_METRIC);
   const [hide, setHide] = useState(() => defaultsFor(HIDE_FIELDS));
   const [grey, setGrey] = useState(() => defaultsFor(GREY_FIELDS));
   const [selectedId, setSelectedId] = useState(null);
   const [flyToRequest, setFlyToRequest] = useState(null); // {coords, ts}
-  const [viewMode, setViewMode] = useState('map'); // 'map' | 'grid'
+  const [viewMode, setViewMode] = useState('map'); // 'map' | 'grid' | 'iso'
   const [focusAssetId, setFocusAssetId] = useState(null); // {id, ts}
+  // Metric drill-down: dims every asset that isn't holding this metric back.
+  // Only the key is held, so the dimmed set follows the filters instead of
+  // freezing at whatever was visible when it was opened.
+  const [focusMetricKey, setFocusMetricKey] = useState(null);
 
   // Freshness comparisons are relative to the date at load time, per spec.
   const loadedAt = useRef(new Date()).current;
@@ -34,6 +47,43 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
 
   const defaultPortfolioGoals = useMemo(() => derivePortfolioGoals(features), [features]);
   const [portfolioGoals, setPortfolioGoalsState] = useState(() => loadPortfolioGoals(features));
+  const [programId, setProgramIdState] = useState(() => loadProgramId());
+
+  // The active program decides what every target means, which metrics are
+  // offered, and how bands are computed.
+  const goalProgram = useMemo(() => getProgram(programId), [programId]);
+  const programContext = useMemo(
+    () => createProgramContext(features, portfolioGoals),
+    [features, portfolioGoals]
+  );
+  const governedMetrics = useMemo(() => governedMetricKeys(goalProgram), [goalProgram]);
+  const programGoals = useMemo(
+    () => resolveProgramGoals(features, goalProgram, programContext),
+    [features, goalProgram, programContext]
+  );
+
+  // Color asks one question of every asset: how much of the active program does
+  // it satisfy? No metric is singled out, so the legend means the same thing
+  // whatever program is on.
+  const scoreFor = useCallback(
+    (props) => scoreAsset(props, goalProgram, programContext),
+    [goalProgram, programContext]
+  );
+
+  const bandFor = useCallback((props) => scoreFor(props).band, [scoreFor]);
+
+  const metricBandFor = useCallback(
+    (props, key) => bandForAsset(props, key, goalProgram, programContext),
+    [goalProgram, programContext]
+  );
+
+  const setGoalProgram = useCallback((nextId) => {
+    const nextProgram = getProgram(nextId);
+    setProgramIdState(nextProgram.id);
+    saveProgramId(nextProgram.id);
+    // Blockers belong to the program that named them.
+    setFocusMetricKey(null);
+  }, []);
 
   // Option lists and range bounds, derived from the loaded dataset.
   const hideMeta = useMemo(() => deriveFieldMeta(HIDE_FIELDS, features), [features]);
@@ -69,13 +119,13 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
   );
 
   const visibleFeatures = useMemo(() => {
-    const ctx = { metricKey, now: loadedAt };
+    const ctx = { now: loadedAt, bandFor };
     return features.filter((f) => passesVisibility(f.properties, resolvedHide, ctx));
-  }, [features, resolvedHide, metricKey, loadedAt]);
+  }, [features, resolvedHide, loadedAt, bandFor]);
 
   const isGreyed = useCallback(
-    (props) => !passesConfidence(props, resolvedGrey, { metricKey, now: loadedAt }),
-    [resolvedGrey, metricKey, loadedAt]
+    (props) => !passesConfidence(props, resolvedGrey, { now: loadedAt }),
+    [resolvedGrey, loadedAt]
   );
 
   const greyedCount = useMemo(
@@ -91,7 +141,6 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
   );
 
   const resetFilters = () => {
-    setMetricKey(DEFAULT_METRIC);
     setHide(defaultsFor(HIDE_FIELDS));
     setGrey(defaultsFor(GREY_FIELDS));
   };
@@ -115,6 +164,16 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     savePortfolioGoals(next);
   }, [features]);
 
+  const metricFocusIds = useMemo(() => {
+    if (!focusMetricKey) return null;
+    return new Set(blockerIdsFor(focusMetricKey, visibleFeatures, metricBandFor));
+  }, [focusMetricKey, visibleFeatures, metricBandFor]);
+
+  const isMetricDimmed = useCallback(
+    (props) => Boolean(metricFocusIds && !metricFocusIds.has(props.id)),
+    [metricFocusIds]
+  );
+
   const value = {
     buildings,
     boundary,
@@ -123,8 +182,6 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     visibleFeatures,
     datasetBounds,
     loadedAt,
-    metricKey,
-    setMetricKey,
     hide: resolvedHide,
     hideMeta,
     setHideField,
@@ -149,6 +206,17 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     setPortfolioGoal,
     setPortfolioGoals,
     resetPortfolioGoals,
+    goalProgram,
+    setGoalProgram,
+    governedMetrics,
+    programGoals,
+    programContext,
+    scoreFor,
+    bandFor,
+    metricBandFor,
+    focusMetricKey,
+    setFocusMetricKey,
+    isMetricDimmed,
   };
 
   return <MapStateContext.Provider value={value}>{children}</MapStateContext.Provider>;

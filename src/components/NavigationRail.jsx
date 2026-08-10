@@ -1,9 +1,23 @@
 import { useState } from 'react';
+import {
+  Map,
+  Briefcase,
+  FileText,
+  Settings,
+  User,
+  PanelLeftClose,
+  PanelLeftOpen,
+} from 'lucide-react';
 
-const NAV_LINKS = ['Map', 'Portfolio', 'Reports', 'Settings'];
+const NAV_LINKS = [
+  { label: 'Map', Icon: Map },
+  { label: 'Portfolio', Icon: Briefcase },
+  { label: 'Reports', Icon: FileText },
+];
 
 export default function NavigationRail() {
   const [expanded, setExpanded] = useState(false);
+  const ToggleIcon = expanded ? PanelLeftClose : PanelLeftOpen;
 
   return (
     <nav
@@ -18,20 +32,45 @@ export default function NavigationRail() {
         aria-label={expanded ? 'Collapse navigation' : 'Expand navigation'}
         title={expanded ? 'Collapse' : 'Expand'}
       >
-        {expanded ? '«' : '»'}
+        <ToggleIcon className="nav-link-icon" aria-hidden="true" />
+        {expanded && <span className="nav-link-label">Collapse</span>}
       </button>
-      {NAV_LINKS.map((label) => (
+
+      <div className="nav-links">
+        {NAV_LINKS.map(({ label, Icon }) => (
+          <button
+            key={label}
+            type="button"
+            className="nav-link"
+            aria-label={label}
+            title={label}
+          >
+            <Icon className="nav-link-icon" aria-hidden="true" />
+            {expanded && <span className="nav-link-label">{label}</span>}
+          </button>
+        ))}
+      </div>
+
+      <div className="nav-footer">
         <button
-          key={label}
           type="button"
           className="nav-link"
-          aria-label={label}
-          title={label}
+          aria-label="Profile"
+          title="Profile"
         >
-          <span className="nav-link-icon" aria-hidden="true" />
-          {expanded && <span className="nav-link-label">{label}</span>}
+          <User className="nav-link-icon" aria-hidden="true" />
+          {expanded && <span className="nav-link-label">Profile</span>}
         </button>
-      ))}
+        <button
+          type="button"
+          className="nav-link"
+          aria-label="Settings"
+          title="Settings"
+        >
+          <Settings className="nav-link-icon" aria-hidden="true" />
+          {expanded && <span className="nav-link-label">Settings</span>}
+        </button>
+      </div>
     </nav>
   );
 }

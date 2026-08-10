@@ -4,11 +4,10 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { useMapState } from '../context/MapStateContext';
-import { featuresToExtrudedPolygons } from '../data/buildingFootprints';
 import { enhanceBasemap } from '../data/enhanceBasemapStyle';
 import {
+  createAssetDotsLayer,
   createBoundaryLayer,
-  createBuildingsLayer,
   createCountyBoundariesLayer,
   createCountyLabelsLayer,
   createOutsideMaskLayer,
@@ -35,8 +34,9 @@ export default function MapView() {
     boundary,
     counties,
     visibleFeatures,
-    metricKey,
+    bandFor,
     isGreyed,
+    isMetricDimmed,
     selectedFeature,
     setSelectedId,
     flyToRequest,
@@ -86,13 +86,11 @@ export default function MapView() {
   };
 
   const handleMapLoad = (evt) => {
-    enhanceBasemap(evt.target);
+    const map = evt.target;
+    enhanceBasemap(map);
+    // Some style layers resolve after first paint; one idle pass keeps zoom consistent.
+    map.once('idle', () => enhanceBasemap(map));
   };
-
-  const buildingPolygons = useMemo(
-    () => featuresToExtrudedPolygons(visibleFeatures, viewState.zoom, viewState.latitude),
-    [visibleFeatures, viewState.zoom, viewState.latitude]
-  );
 
   const layers = useMemo(() => {
     const stack = [];
@@ -108,31 +106,28 @@ export default function MapView() {
 
     stack.push(createBoundaryLayer(boundary));
     stack.push(
-      createBuildingsLayer(buildingPolygons, {
-        metricKey,
+      createAssetDotsLayer(visibleFeatures, {
+        bandFor,
         isGreyed,
+        isMetricDimmed,
         onHover: (info) => setHoverInfo(info.object ? info : null),
         onClick: (info) => info.object && setSelectedId(info.object.properties.id),
       })
     );
 
-    const highlight = createSelectedHighlightLayer(
-      selectedFeature,
-      viewState.zoom,
-      viewState.latitude
-    );
+    const highlight = createSelectedHighlightLayer(selectedFeature, visibleFeatures);
     if (highlight) stack.push(highlight);
 
     return stack;
   }, [
     boundary,
     counties,
-    buildingPolygons,
-    metricKey,
+    visibleFeatures,
+    bandFor,
     isGreyed,
+    isMetricDimmed,
     selectedFeature,
     viewState.zoom,
-    viewState.latitude,
     setSelectedId,
   ]);
 

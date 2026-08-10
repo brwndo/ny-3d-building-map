@@ -3,16 +3,17 @@ import { useMapState } from '../context/MapStateContext';
 import { bandCss, GREY } from '../data/colorScale';
 import HoverPopup from './HoverPopup';
 
-function tileColor(props, metricKey, isGreyed) {
+function tileColor(props, isGreyed, bandFor) {
   if (isGreyed(props)) return `rgb(${GREY.join(', ')})`;
-  return bandCss(props.metrics?.[metricKey]?.band);
+  return bandCss(bandFor(props));
 }
 
 export default function GridView() {
   const {
     visibleFeatures,
-    metricKey,
+    bandFor,
     isGreyed,
+    isMetricDimmed,
     selectedId,
     setSelectedId,
     focusAssetId,
@@ -51,13 +52,16 @@ export default function GridView() {
         {sortedFeatures.map((feature) => {
           const { id } = feature.properties;
           const selected = id === selectedId;
+          const dimmed = isMetricDimmed(feature.properties);
           return (
             <button
               key={id}
               type="button"
               id={`grid-tile-${id}`}
-              className={`grid-tile${selected ? ' grid-tile--selected' : ''}`}
-              style={{ backgroundColor: tileColor(feature.properties, metricKey, isGreyed) }}
+              className={`grid-tile${selected ? ' grid-tile--selected' : ''}${dimmed ? ' grid-tile--dimmed' : ''}`}
+              style={{
+                backgroundColor: tileColor(feature.properties, isGreyed, bandFor),
+              }}
               aria-label={feature.properties.name}
               aria-pressed={selected}
               onClick={() => setSelectedId(id)}

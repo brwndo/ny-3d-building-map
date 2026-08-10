@@ -21,9 +21,9 @@ export const HIDE_FIELDS = [
     kind: 'multi',
     label: 'Show only bands',
     // Fixed rather than dataset-derived: the band set must not shift when the
-    // selected metric changes out from under an active selection.
+    // active goal program changes out from under a selection.
     options: BAND_ORDER,
-    get: (p, ctx) => p.metrics?.[ctx.metricKey]?.band,
+    get: (p, ctx) => ctx.bandFor(p),
   },
   {
     key: 'city',
@@ -80,8 +80,8 @@ export const GREY_FIELDS = [
     kind: 'threshold',
     label: 'Data coverage at least',
     unit: '%',
-    // Coverage is the one criterion that defaults on, per spec.
-    default: { enabled: true, value: 65 },
+    // Coverage threshold stays at 65% when enabled; starts off so nothing is greyed on load.
+    default: { enabled: false, value: 65 },
     get: (p) => p.dataCoverage * 100,
   },
   {

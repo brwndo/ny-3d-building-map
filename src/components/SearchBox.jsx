@@ -24,6 +24,7 @@ export default function SearchBox({ autoFocus = false, onSelect }) {
     if (viewMode === 'map') {
       setFlyToRequest({ coords: feature.geometry.coordinates, ts: Date.now() });
     } else {
+      // Grid and Iso both focus by asset id (scroll / camera ease).
       setFocusAssetId({ id: feature.properties.id, ts: Date.now() });
     }
     setQuery('');

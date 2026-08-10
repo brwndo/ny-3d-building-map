@@ -10,6 +10,18 @@ const HALF_EXTENT_MAX_PX = 20;
 const FLOOR_AREA_SQRT_MIN = Math.sqrt(57_000);
 const FLOOR_AREA_SQRT_MAX = Math.sqrt(711_000);
 
+/** Pixel radius for map dots — sqrt-scaled by floor area (sq ft). */
+export const DOT_RADIUS_MIN_PX = 5;
+export const DOT_RADIUS_MAX_PX = 22;
+
+export function radiusForFloorArea(floorArea, minArea = 57_000, maxArea = 711_000) {
+  const lo = Math.sqrt(minArea);
+  const hi = Math.sqrt(maxArea);
+  if (hi <= lo || floorArea == null) return DOT_RADIUS_MIN_PX;
+  const t = (Math.sqrt(floorArea) - lo) / (hi - lo);
+  return DOT_RADIUS_MIN_PX + Math.min(Math.max(t, 0), 1) * (DOT_RADIUS_MAX_PX - DOT_RADIUS_MIN_PX);
+}
+
 export function metersPerPixel(latitude, zoom) {
   return (156543.03392 * Math.cos((latitude * Math.PI) / 180)) / Math.pow(2, zoom);
 }

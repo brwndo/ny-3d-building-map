@@ -2,15 +2,69 @@
   box-sizing: border-box;
 }
 
+:root {
+  /* Dense-dashboard spacing tiers. Each step is a hierarchy level, not a
+     free-floating value: 1-2 group text within a row, 3-4 separate rows from
+     sections, 5-6 separate sections from each other. */
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 10px;
+  --space-4: 14px;
+  --space-5: 20px;
+  --space-6: 28px;
+
+  /* 12px is the floor. Anything smaller is unreadable at this density. */
+  --text-micro: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 28px;
+
+  --line-tight: 1.25;
+  --line-snug: 1.45;
+  --line-normal: 1.55;
+
+  /* Every text token clears 4.5:1 on both --surface-card and --surface-tile. */
+  --text-strong: #0f172a;
+  --text-body: #1e293b;
+  --text-muted: #475569;
+  --text-subtle: #5f6e85;
+
+  --surface-page: #ebebeb;
+  --surface-card: #fff;
+  --surface-tile: #f8f8f8;
+  --border: #e2e8f0;
+  --border-soft: #eef2f7;
+  --focus-ring: #2563eb;
+}
+
 html,
 body,
 #root {
   margin: 0;
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  font-size: 14px;
-  color: #1e293b;
-  background: #ebebeb;
+  font-size: var(--text-base);
+  line-height: var(--line-normal);
+  color: var(--text-body);
+  background: var(--surface-page);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 .load-screen {
@@ -54,6 +108,21 @@ body,
   min-width: 0;
 }
 
+.nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+.nav-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: auto;
+}
+
 .controls-region {
   grid-area: controls;
   overflow: visible;
@@ -78,10 +147,14 @@ body,
 .controls-region,
 .map-view-region,
 .dashboard-stats {
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 12px;
   padding: 8px;
   min-height: 0;
+}
+
+.dashboard-stats {
+  padding: var(--space-4) var(--space-3) var(--space-3);
 }
 
 /* ---------- Navigation rail ---------- */
@@ -95,13 +168,20 @@ body,
   width: 100%;
   aspect-ratio: 1;
   max-height: 56px;
-  background: #f8f8f8;
+  background: transparent;
   border: none;
   border-radius: 8px;
   cursor: pointer;
   color: #475569;
   font-size: 16px;
   padding: 8px;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.nav-toggle:hover,
+.nav-link:hover {
+  background: #f8f8f8;
+  color: #1e293b;
 }
 
 .navigation-rail--expanded .nav-toggle,
@@ -115,9 +195,8 @@ body,
 .nav-link-icon {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
-  background: #cbd5e1;
   flex-shrink: 0;
+  stroke-width: 1.75;
 }
 
 .nav-link-label {
@@ -289,7 +368,7 @@ body,
   gap: 12px;
   height: 56px;
   flex-shrink: 0;
-  background: #f8f8f8;
+  background: transparent;
   border-radius: 8px;
   padding: 0 12px;
   z-index: 20;
@@ -369,6 +448,18 @@ body,
   background: #f8f8f8;
 }
 
+.iso-view {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f7f6f3;
+}
+
+.iso-view .map-navigation {
+  z-index: 2;
+}
+
 .grid-view-inner {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
@@ -394,6 +485,10 @@ body,
 
 .grid-tile--selected {
   box-shadow: 0 0 0 2px #2563eb;
+}
+
+.grid-tile--dimmed {
+  opacity: 0.22;
 }
 
 .grid-tile--pulse {
@@ -437,14 +532,59 @@ body,
   padding: 12px;
 }
 
-.filter-controls section {
+.filter-section {
   border-top: 1px solid #f1f5f9;
-  padding: 12px 0;
 }
 
-.filter-controls section:first-child {
-  border-top: none;
-  padding-top: 0;
+.filter-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+  color: #0f172a;
+}
+
+.filter-section-toggle:hover .filter-section-title {
+  color: #2563eb;
+}
+
+.filter-section-chevron {
+  font-size: var(--text-micro);
+  color: var(--text-subtle);
+  width: 10px;
+}
+
+.filter-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: auto;
+}
+
+.filter-section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: var(--text-micro);
+  font-weight: 600;
+}
+
+.filter-section-body {
+  padding-bottom: 12px;
+}
+
+.filter-section-body > h3:first-child {
+  margin-top: 0;
 }
 
 .controls-popover-header {
@@ -472,35 +612,10 @@ body,
 }
 
 .hint {
-  font-size: 12px;
-  color: #94a3b8;
-  margin: 0 0 8px;
-}
-
-.effect-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 1px 6px;
-  border-radius: 999px;
-  vertical-align: middle;
-}
-
-.effect-hides {
-  background: #fee2e2;
-  color: #b91c1c;
-}
-
-.effect-colors {
-  background: #dcfce7;
-  color: #15803d;
-}
-
-.effect-greys {
-  background: #e2e8f0;
-  color: #475569;
+  font-size: var(--text-micro);
+  line-height: var(--line-normal);
+  color: var(--text-subtle);
+  margin: 0 0 var(--space-3);
 }
 
 .filter-subgroup {
@@ -513,7 +628,7 @@ body,
   color: #334155;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: 11px;
+  font-size: var(--text-micro);
   margin-top: 0;
 }
 
@@ -636,27 +751,41 @@ input[type='search'] {
 
 .search-empty {
   padding: 10px 12px;
-  font-size: 13px;
-  color: #94a3b8;
+  font-size: var(--text-sm);
+  color: var(--text-subtle);
 }
 
 /* ---------- Legend ---------- */
 
 .legend {
-  font-size: 12px;
+  font-size: var(--text-micro);
+  line-height: var(--line-snug);
 }
 
 .legend-title {
   font-weight: 600;
-  margin-bottom: 6px;
-  color: #475569;
+  color: var(--text-muted);
+}
+
+.legend-program {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.legend-purpose {
+  font-size: var(--text-micro);
+  line-height: var(--line-normal);
+  color: var(--text-subtle);
+  margin-bottom: var(--space-3);
+  max-width: 220px;
 }
 
 .legend-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 1px 0;
+  gap: var(--space-3);
+  padding: 3px 0;
 }
 
 .legend-swatch {
@@ -667,8 +796,8 @@ input[type='search'] {
 }
 
 .legend-note {
-  margin-top: 6px;
-  color: #94a3b8;
+  margin-top: var(--space-2);
+  color: var(--text-subtle);
 }
 
 /* ---------- Dashboard stats ---------- */
@@ -676,46 +805,224 @@ input[type='search'] {
 .dashboard-stats {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
   overflow: hidden;
   overscroll-behavior: contain;
 }
 
+/* The header is a section, so it separates from the tiles with a rule rather
+   than with the same gap the tiles use between themselves. */
 .dashboard-stats-header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  flex-direction: column;
+  gap: var(--space-3);
   flex-shrink: 0;
-  padding: 4px 4px 0;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.program-active-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.program-active-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.program-active-name-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.program-select-label {
+  font-size: var(--text-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+  white-space: nowrap;
+}
+
+.program-active-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: var(--line-snug);
+  color: var(--text-strong);
+  min-width: 0;
+}
+
+/* ---------- Tooltips (portaled helper copy) ---------- */
+
+.tooltip {
+  position: fixed;
+  z-index: 120;
+  max-width: 240px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-card);
+  color: var(--text-body);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  font-size: var(--text-sm);
+  line-height: var(--line-normal);
+  pointer-events: none;
+}
+
+.tooltip p {
+  margin: 0;
+}
+
+.tooltip p + p {
+  margin-top: var(--space-2);
+}
+
+.tooltip-meta {
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+}
+
+.info-tip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.info-tip-btn:hover {
+  background: var(--surface-tile);
+  color: var(--text-muted);
+}
+
+.info-tip-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.info-tip-btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.controls-button-value {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid #e2e8f0;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.program-target-list {
+  margin: 0 0 var(--space-1);
+  padding-left: 18px;
+  font-size: var(--text-micro);
+  line-height: var(--line-normal);
+  color: var(--text-muted);
+}
+
+.program-target-list li {
+  padding: 2px 0;
+}
+
+.legend-meaning {
+  color: var(--text-subtle);
+}
+
+.drawer-block-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.drawer-block-head h3 {
+  margin: 0;
+}
+
+.drawer-block-head .chip {
+  margin-top: 1px;
+}
+
+/* Consecutive hints under a block head need a clear break so they don't
+   read as one paragraph. */
+.drawer-stat-block > .hint {
+  margin-bottom: var(--space-2);
+}
+
+.drawer-stat-block > .hint + .hint {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-4);
+}
+
+.program-purpose {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--line-normal);
+  color: var(--text-muted);
+}
+
+.program-authority {
+  margin: 0;
+  font-size: var(--text-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-subtle);
+}
+
+/* In the popover these follow a select rather than a flex-gapped column. */
+.filter-controls .program-purpose {
+  margin-top: 6px;
+}
+
+.filter-controls .program-authority {
+  margin-top: 2px;
 }
 
 .dashboard-stats-title {
-  font-size: 11px;
+  font-size: var(--text-micro);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #64748b;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
 }
 
-.goals-open-btn,
 .goals-primary-btn,
 .goals-secondary-btn {
   border: none;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 8px 12px;
+  min-height: 34px;
 }
 
-.goals-open-btn,
 .goals-secondary-btn {
   background: #f1f5f9;
   color: #334155;
 }
 
-.goals-open-btn:hover,
 .goals-secondary-btn:hover {
   background: #e2e8f0;
 }
@@ -732,37 +1039,62 @@ input[type='search'] {
 .dashboard-stats-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
   overflow-y: auto;
   min-height: 0;
   flex: 1;
+  /* Reserve the scrollbar track so it never lands on top of the hint text. */
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
 }
 
 .aggregate-stat {
   flex: 0 0 auto;
-  background: #f8f8f8;
+  background: var(--surface-tile);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  justify-content: center;
-  gap: 4px;
-  padding: 12px 14px;
+  /* Tile children set their own spacing so the label/value pair can sit tighter
+     than the supporting lines below it. A single gap flattens all of them. */
+  gap: 0;
+  padding: var(--space-4) var(--space-4) var(--space-5);
+}
+
+/* The panel's answer, not one of nine equals. */
+.aggregate-stat--headline {
+  background: var(--surface-card);
+  border: 1px solid #d7dee8;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  padding: var(--space-5) var(--space-4) var(--space-5);
+}
+
+.aggregate-stat--headline .aggregate-stat-value {
+  font-size: var(--text-2xl);
+}
+
+.aggregate-stat--headline .progress-track {
+  height: 8px;
 }
 
 .aggregate-stat-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .aggregate-stat-label {
-  font-size: 11px;
-  color: #64748b;
+  font-size: var(--text-micro);
+  color: var(--text-muted);
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
+  line-height: var(--line-snug);
+  min-width: 0;
+  flex: 1 1 8rem;
 }
 
 .aggregate-pace-chip {
@@ -770,33 +1102,48 @@ input[type='search'] {
 }
 
 .aggregate-stat-value {
-  font-size: 20px;
+  font-size: var(--text-xl);
   font-weight: 600;
-  color: #1e293b;
-  line-height: 1.2;
+  color: var(--text-strong);
+  line-height: var(--line-tight);
 }
 
 .aggregate-stat-goal {
-  font-size: 12px;
-  color: #475569;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
   font-weight: 500;
-  line-height: 1.3;
+  line-height: var(--line-normal);
+  margin-top: var(--space-3);
 }
 
 .aggregate-progress {
-  margin-top: 2px;
+  margin-top: var(--space-4);
+}
+
+.aggregate-stat-value + .aggregate-progress {
+  margin-top: var(--space-5);
 }
 
 .aggregate-stat-deadline {
-  font-size: 11px;
-  color: #64748b;
-  line-height: 1.35;
+  font-size: var(--text-micro);
+  color: var(--text-muted);
+  line-height: var(--line-normal);
+  margin-top: var(--space-3);
 }
 
+/* The hint is a run-on of concatenated clauses, so it needs real leading and a
+   clear break from the number it describes. */
 .aggregate-stat-hint {
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.35;
+  font-size: var(--text-micro);
+  color: var(--text-subtle);
+  line-height: var(--line-normal);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+
+.aggregate-stat--headline .aggregate-stat-hint {
+  border-top-color: var(--border);
 }
 
 /* ---------- Goals editor (inside stats panel) ---------- */
@@ -804,7 +1151,7 @@ input[type='search'] {
 .goals-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-4);
   min-height: 0;
   flex: 1;
   overflow: hidden;
@@ -814,39 +1161,49 @@ input[type='search'] {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-3);
   flex-shrink: 0;
 }
 
 .goals-editor-header h2 {
   margin: 0;
-  font-size: 15px;
-  color: #1e293b;
+  font-size: var(--text-lg);
+  line-height: var(--line-snug);
+  color: var(--text-strong);
 }
 
 .goals-editor-sub {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: #94a3b8;
-  line-height: 1.35;
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-micro);
+  color: var(--text-subtle);
+  line-height: var(--line-normal);
+}
+
+.goals-editor-note {
+  margin: 0;
+  font-size: var(--text-micro);
+  color: var(--text-subtle);
+  line-height: var(--line-normal);
 }
 
 .goals-editor-body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-3);
   overflow-y: auto;
   min-height: 0;
   flex: 1;
+  scrollbar-gutter: stable;
+  padding-right: var(--space-1);
 }
 
 .goals-editor-row {
-  background: #f8f8f8;
+  background: var(--surface-tile);
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: var(--space-4) var(--space-4) var(--space-5);
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: var(--space-4) var(--space-3);
 }
 
 .goals-editor-row-label {
@@ -854,52 +1211,101 @@ input[type='search'] {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: #1e293b;
+  line-height: var(--line-snug);
+  color: var(--text-strong);
 }
 
 .goals-editor-default {
-  font-size: 11px;
+  font-size: var(--text-micro);
   font-weight: 400;
-  color: #94a3b8;
+  color: var(--text-subtle);
 }
 
 .goals-editor-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
-  color: #64748b;
+  gap: var(--space-1);
+  font-size: var(--text-micro);
+  color: var(--text-muted);
 }
 
 .goals-editor-field input {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 13px;
-  color: #1e293b;
-  background: #fff;
+  padding: 8px;
+  font-size: var(--text-base);
+  color: var(--text-body);
+  background: var(--surface-card);
   width: 100%;
-}
-
-.goals-editor-field input:focus {
-  outline: 2px solid #cbd5e1;
-  outline-offset: 1px;
+  min-height: 36px;
 }
 
 .goals-editor-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
   flex-shrink: 0;
-  padding-top: 4px;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
 }
 
 .goals-editor-actions-right {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
+}
+
+/* ---------- Portfolio composition (inside stats panel) ---------- */
+
+.composition-levels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: var(--surface-card);
+  border-radius: 8px;
+  padding: var(--space-3) var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.composition-level-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--line-normal);
+  color: var(--text-body);
+  padding: 2px 0;
+}
+
+.composition-level-row span:last-child {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.stat-blocker-btn {
+  align-self: flex-start;
+  margin-top: var(--space-3);
+  border: none;
+  background: none;
+  /* Padding rather than a bare text run, so the underlined label is an
+     actually-hittable target. */
+  padding: 8px 0;
+  font-size: var(--text-micro);
+  font-weight: 600;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.stat-blocker-btn:hover {
+  color: var(--text-strong);
+}
+
+.stat-blocker-btn[aria-pressed='true'] {
+  color: var(--text-strong);
 }
 
 /* ---------- Asset details drawer overlay ---------- */
@@ -912,16 +1318,17 @@ input[type='search'] {
   justify-content: flex-end;
   align-items: stretch;
   padding: 8px;
-  background: rgba(15, 23, 42, 0.12);
+  /* Strong enough to pull the drawer's dense text off the map behind it. */
+  background: rgba(15, 23, 42, 0.32);
 }
 
 .asset-details-drawer {
-  width: min(632px, 42%);
+  width: clamp(360px, 46vw, 680px);
   max-width: 100%;
   max-height: calc(100vh - 16px);
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--surface-card);
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 8px 32px rgba(15, 23, 42, 0.18);
@@ -931,112 +1338,150 @@ input[type='search'] {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 8px;
-  min-height: 56px;
+  gap: var(--space-4);
   flex-shrink: 0;
-  background: #f8f8f8;
-  border-radius: 8px;
-  margin: 8px;
-  padding: 8px 12px;
+  background: var(--surface-tile);
+  border-bottom: 1px solid var(--border);
+  padding: var(--space-4) var(--space-5);
 }
 
 .drawer-controls-info {
   min-width: 0;
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
 .drawer-controls h2 {
-  font-size: 15px;
+  font-size: var(--text-xl);
+  line-height: var(--line-tight);
+  color: var(--text-strong);
   margin: 0 0 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* Building names are long and meaningful; wrap them instead of clipping. */
+  overflow-wrap: anywhere;
 }
 
 .drawer-body {
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px 8px;
+  padding: var(--space-4) var(--space-5) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-4);
+  scrollbar-gutter: stable;
 }
 
 .drawer-stat-block {
-  background: #f8f8f8;
+  background: var(--surface-tile);
   border-radius: 8px;
-  padding: 12px 14px;
-  min-height: 192px;
+  padding: var(--space-5) var(--space-4);
 }
 
 .drawer-stat-block h3 {
-  font-size: 13px;
+  font-size: var(--text-micro);
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #475569;
-  margin: 0 0 8px;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-4);
+  line-height: var(--line-snug);
 }
 
+/* A second heading inside a block (e.g. "Certifications") starts a new group,
+   so it gets the same break a new block would. */
+.drawer-stat-block h3:not(:first-child) {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+/* A period heading interrupts a run of rows, so it needs a visible break above
+   it — more than the gap between the rows it is separating. */
 .drawer-stat-block h4 {
-  font-size: 12px;
-  color: #64748b;
-  margin: 12px 0 4px;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--text-strong);
+  margin: var(--space-5) 0 var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  line-height: var(--line-snug);
 }
 
 .detail-sub {
-  font-size: 12px;
-  color: #64748b;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: var(--text-sm);
+  line-height: var(--line-normal);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }
 
 .close-button {
-  background: #fff;
-  border: 1px solid #e2e8f0;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  width: 28px;
-  height: 28px;
-  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
-  color: #475569;
+  color: var(--text-muted);
   flex-shrink: 0;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
+.close-button:hover {
+  background: var(--surface-tile);
+  color: var(--text-strong);
+}
+
+/* Cap the row measure so label→value tracking stays readable in a wide
+   drawer; values still share a right-aligned column inside that measure. */
 .detail-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 3px 0;
-  font-size: 13px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--space-5);
+  align-items: baseline;
+  padding: 12px 0;
+  max-width: 26rem;
+  font-size: var(--text-base);
+  line-height: var(--line-normal);
+}
+
+.detail-row + .detail-row {
+  border-top: 1px solid var(--border-soft);
 }
 
 .detail-label {
-  color: #64748b;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .detail-value {
   text-align: right;
+  font-weight: 500;
+  color: var(--text-strong);
   font-variant-numeric: tabular-nums;
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .chip {
   display: inline-block;
   color: #fff;
-  font-size: 11px;
+  font-size: var(--text-micro);
   font-weight: 600;
-  padding: 2px 8px;
+  line-height: var(--line-snug);
+  padding: 4px 10px;
   border-radius: 999px;
   white-space: nowrap;
 }
 
 .metric-card {
-  border: 1px solid #e2e8f0;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
-  background: #fff;
+  padding: var(--space-4) var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+  background: var(--surface-card);
 }
 
 .metric-card:last-child {
@@ -1046,21 +1491,45 @@ input[type='search'] {
 .metric-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 4px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .metric-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-base);
+  line-height: var(--line-snug);
+  color: var(--text-strong);
+  min-width: 0;
+  flex: 1 1 10rem;
+}
+
+.metric-card-body .detail-row:first-child {
+  padding-top: var(--space-3);
+}
+
+.metric-card-body .detail-row:last-of-type {
+  padding-bottom: var(--space-3);
+}
+
+.metric-card-body .hint {
+  margin: var(--space-3) 0 0;
 }
 
 .progress-track {
   height: 6px;
-  background: #e2e8f0;
+  background: var(--border);
   border-radius: 3px;
-  margin-top: 6px;
+  margin-top: var(--space-5);
   overflow: hidden;
+}
+
+.metric-card-body .progress-track {
+  max-width: 26rem;
 }
 
 .progress-fill {
@@ -1114,7 +1583,7 @@ input[type='search'] {
 
 .empty-title {
   font-weight: 600;
-  font-size: 15px;
+  font-size: var(--text-lg);
   margin-bottom: 6px;
 }
 

@@ -1,7 +1,10 @@
 // Shared color-band and height-scale logic. The Legend reads BANDS directly so
 // the key always matches what the map renders.
 
-export const METRICS = [
+import { DERIVED_METRICS } from './derivedMetrics';
+
+/** Metrics carried by the Baseline & Targets sheet, with a baseline and a target. */
+export const SHEET_METRICS = [
   { key: 'energyStar', label: 'ENERGY STAR Score', type: 'fixed' },
   { key: 'ghg', label: 'GHG Emissions (Scope 1+2)', type: 'trajectory' },
   { key: 'eui', label: 'EUI (kWh/sq ft)', type: 'trajectory' },
@@ -10,7 +13,15 @@ export const METRICS = [
   { key: 'coverage', label: 'Data Coverage', type: 'fixed' },
 ];
 
-export const DEFAULT_METRIC = 'energyStar';
+// Display order for every metric a program can govern. Derived predicates sort
+// after the metered metrics so the sheet metrics keep the order they had.
+export const METRICS = [...SHEET_METRICS, ...DERIVED_METRICS];
+
+export const SHEET_METRIC_KEYS = SHEET_METRICS.map((m) => m.key);
+
+export function metricMeta(key) {
+  return METRICS.find((entry) => entry.key === key) ?? null;
+}
 
 // Band thresholds live in scripts/prepare_data.py (bands are precomputed into
 // buildings.geojson, direction-adjusted and clamped). Order: worst -> best.
@@ -32,10 +43,6 @@ export function bandColor(bandLabel) {
 export function bandCss(bandLabel) {
   const [r, g, b] = bandColor(bandLabel);
   return `rgb(${r}, ${g}, ${b})`;
-}
-
-export function colorForFeature(props, metricKey) {
-  return bandColor(props.metrics?.[metricKey]?.band);
 }
 
 // --- Column height: sqrt-normalized floor count -------------------------------

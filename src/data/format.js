@@ -39,5 +39,7 @@ export function fmtMetricValue(value, unit) {
   if (value == null) return '—';
   if (unit === '%') return fmtPct(value);
   if (unit === '1-100') return intFmt.format(value);
+  // Derived predicates carry 0/1; a percentage would overstate the precision.
+  if (unit === 'pass') return value >= 1 ? 'Yes' : 'No';
   return `${fmtNumber(value)} ${unit}`;
 }

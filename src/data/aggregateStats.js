@@ -1,17 +1,49 @@
-import { BANDS, METRICS } from './colorScale';
+import { METRICS } from './colorScale';
+import { isDerivedMetric, resolveAssetMetric } from './derivedMetrics';
 import { fmtMetricValue, fmtMoney, fmtNumber, fmtPct } from './format';
 import {
   compareToGoal,
+  deadlineYearFromGoal,
   directionForMetric,
+  formatDeadlineHint,
   formatGoalLine,
-  isGoalMetric,
+  isSumMetric,
+  paceBand,
+  paceStatus,
   unitForMetric,
 } from './portfolioGoals';
+import {
+  bandForProgress,
+  governedMetricKeys,
+  portfolioRollupFor,
+  shareMeetingThreshold,
+  targetLabelFor,
+} from './goalPrograms';
 
 const COVERAGE_THRESHOLD_PCT = 65;
 
-function metricMeta(key) {
-  return METRICS.find((entry) => entry.key === key);
+// Per-metric rollup labels and value getters. The sum vs floor-area-weighted
+// rule itself lives in portfolioGoals so goals and currents always agree.
+const METRIC_TILES = {
+  coverage: {
+    label: 'Data coverage',
+    getValue: (props) => props.dataCoverage ?? props.metrics?.coverage?.currentValue,
+  },
+  ghg: { label: metricLabel('ghg') },
+  eui: { label: 'EUI' },
+  waste: { label: 'Waste diversion' },
+  water: { label: 'Water use' },
+  energyStar: { label: metricLabel('energyStar'), unitFallback: '1-100' },
+  // Derived predicates always carry a thresholdShare rollup, which supplies its
+  // own label; these entries exist so computeAggregateStats does not drop them.
+  completeness: { label: 'Assets with 12-month data' },
+  performanceData: { label: 'Assets with full performance data' },
+  certifications: { label: 'Assets with a certification' },
+  confidence: { label: 'Assets with verified data' },
+};
+
+function metricLabel(key) {
+  return METRICS.find((entry) => entry.key === key)?.label ?? key;
 }
 
 function metricUnit(features, metricKey) {
@@ -51,213 +83,327 @@ function fmtAssetCount(count) {
   return count === 1 ? '1 asset' : `${count} assets`;
 }
 
-function bandBreakdown(features, metricKey) {
-  const counts = Object.fromEntries(BANDS.map((band) => [band.key, 0]));
+function bandBreakdown(features, metricKey, metricBandFor) {
+  const counts = new Map();
 
   for (const feature of features) {
-    const band = feature.properties.metrics?.[metricKey]?.band;
-    if (band && counts[band] != null) counts[band] += 1;
+    const band = metricBandFor(feature.properties, metricKey);
+    if (!band) continue;
+    counts.set(band, (counts.get(band) ?? 0) + 1);
   }
 
-  return BANDS.map((band) => ({ band: band.key, count: counts[band.key] }))
-    .filter(({ count }) => count > 0)
-    .map(({ band, count }) => `${count} ${band}`)
+  return formatBandCounts(counts);
+}
+
+// Worst -> best, matching the legend order.
+function formatBandCounts(counts) {
+  return [...counts.entries()]
+    .sort((a, b) => bandRank(a[0]) - bandRank(b[0]))
+    .map(([band, count]) => `${count} ${band}`)
     .join(' · ');
 }
 
-function hasOperationalCert(props) {
-  return Boolean(props.cert?.bc12 || props.cert?.bc2);
+const BAND_ORDER = ['Off Track', 'At Risk', 'On Track', 'Target Met'];
+
+function bandRank(band) {
+  const index = BAND_ORDER.indexOf(band);
+  return index === -1 ? BAND_ORDER.length : index;
 }
 
 function emptyStat(label, hint = 'No matching assets') {
   return { label, value: '—', hint, goal: null };
 }
 
-function withGoal(stat, currentValue, metricKey, features, portfolioGoals, now) {
-  if (!isGoalMetric(metricKey) || !portfolioGoals?.[metricKey] || currentValue == null) {
-    return { ...stat, goal: null };
+function extraHintFor(metricKey, visibleFeatures) {
+  if (metricKey === 'coverage') {
+    const below = visibleFeatures.filter(
+      (feature) => (feature.properties.dataCoverage ?? 0) * 100 < COVERAGE_THRESHOLD_PCT
+    ).length;
+    return `${below} below ${COVERAGE_THRESHOLD_PCT}%`;
   }
-  const unit = metricUnit(features, metricKey);
-  const direction = directionForMetric(features, metricKey);
-  const comparison = compareToGoal(
-    currentValue,
-    portfolioGoals[metricKey],
-    direction,
-    now
-  );
+  if (metricKey === 'energyStar') {
+    const eligible = visibleFeatures.filter(
+      (feature) => feature.properties.energyStarEligible
+    ).length;
+    return `${eligible} eligible`;
+  }
+  return null;
+}
+
+function mean(values) {
+  return values.reduce((acc, v) => acc + v, 0) / values.length;
+}
+
+/**
+ * How close the portfolio is to the whole program: the mean of the per-metric
+ * progress already shown on the tiles below, so the headline and the numbers
+ * backing it can never disagree.
+ */
+function programCompletionTile(program, metricStats, now) {
+  const progresses = [];
+  const expected = [];
+  const deadlines = [];
+
+  for (const stat of metricStats) {
+    if (stat.goal?.p == null) continue;
+    progresses.push(stat.goal.p);
+    if (stat.goal.expectedP != null) expected.push(stat.goal.expectedP);
+    if (stat.goal.deadline) deadlines.push(stat.goal.deadline);
+  }
+
+  const label = `${program.label} completion`;
+  if (progresses.length === 0) {
+    return emptyStat(label, 'No measurable targets in view');
+  }
+
+  const p = mean(progresses);
+  const expectedP = expected.length > 0 ? mean(expected) : null;
+  const pace = paceStatus(p, expectedP);
+
+  return {
+    label,
+    value: fmtPct(p),
+    hint:
+      progresses.length === 1
+        ? 'Portfolio progress toward the target'
+        : `Mean progress across ${progresses.length} targets`,
+    progress: {
+      p,
+      band: bandForProgress(p),
+      pace,
+      paceBand: paceBand(pace),
+      caption: deadlineCaption(deadlines, now),
+    },
+    goal: null,
+  };
+}
+
+/** One deadline reads as a due date; several read as a window. */
+function deadlineCaption(deadlines, now) {
+  if (deadlines.length === 0) return null;
+  const sorted = [...deadlines].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  if (first === last) return formatDeadlineHint(first, now);
+  return `Deadlines Dec ${deadlineYearFromGoal({ deadline: first })} to Dec ${deadlineYearFromGoal(
+    { deadline: last }
+  )}`;
+}
+
+/**
+ * The strict companion to completion: how many assets clear every target the
+ * active program sets.
+ */
+function targetsMetTile(visibleFeatures, program, scoreFor) {
+  const counts = new Map();
+  let meetingAll = 0;
+  let covered = 0;
+
+  for (const feature of visibleFeatures) {
+    const score = scoreFor(feature.properties);
+    if (!score.covered) continue;
+    covered += 1;
+    if (score.met === score.total) meetingAll += 1;
+    counts.set(score.band, (counts.get(score.band) ?? 0) + 1);
+  }
+
+  const targetCount = governedMetricKeys(program).length;
+  const noun = targetCount === 1 ? 'target' : 'targets';
+
+  if (covered === 0) {
+    return emptyStat('Assets meeting all targets', 'No assets covered by this program');
+  }
+
+  return {
+    label: 'Assets meeting all targets',
+    value: fmtPct(meetingAll / covered),
+    hint: [
+      `${meetingAll} of ${covered} meet all ${targetCount} ${noun}`,
+      formatBandCounts(counts),
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    goal: null,
+  };
+}
+
+/**
+ * The assets standing between the portfolio and this target. A null band means
+ * the program does not score the asset on this metric at all, so it is not
+ * holding anything back.
+ */
+export function blockerIdsFor(metricKey, visibleFeatures, metricBandFor) {
+  const ids = [];
+  for (const feature of visibleFeatures) {
+    const band = metricBandFor(feature.properties, metricKey);
+    if (band == null || band === 'Target Met') continue;
+    ids.push(feature.properties.id);
+  }
+  return ids;
+}
+
+function metricTile(metricKey, visibleFeatures, { program, programGoals, metricBandFor, now }) {
+  const tile = METRIC_TILES[metricKey];
+  const rollup = portfolioRollupFor(program, metricKey);
+  const rolled =
+    rollup?.rollup === 'thresholdShare'
+      ? thresholdShareRollup(metricKey, visibleFeatures, rollup)
+      : defaultRollup(metricKey, visibleFeatures, tile, program);
+
+  const stat = {
+    label: rolled.label,
+    value: fmtMetricValue(rolled.currentValue, rolled.unit),
+    hint: [
+      rolled.rollupHint,
+      // The threshold hint already says how many assets clear the bar.
+      rollup ? null : extraHintFor(metricKey, visibleFeatures),
+      bandBreakdown(visibleFeatures, metricKey, metricBandFor),
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    metricKey,
+    blockerIds: blockerIdsFor(metricKey, visibleFeatures, metricBandFor),
+  };
+
+  const goal = programGoals?.[metricKey];
+  if (!goal || rolled.currentValue == null) return { ...stat, goal: null };
+
+  const comparison = compareToGoal(rolled.currentValue, goal, rolled.direction, now);
   if (!comparison) return { ...stat, goal: null };
+
   return {
     ...stat,
     goal: {
       ...comparison,
-      goalLine: formatGoalLine(portfolioGoals[metricKey], unit),
-      unit,
+      goalLine: formatGoalLine(goal, rolled.unit, rolled.targetLabel),
+      unit: rolled.unit,
     },
   };
 }
 
-export function computeAggregateStats(visibleFeatures, portfolioGoals = null, now = new Date()) {
+function defaultRollup(metricKey, visibleFeatures, tile, program) {
+  const getValue =
+    tile.getValue ?? ((props) => resolveAssetMetric(props, metricKey)?.currentValue);
+  const isSum = isSumMetric(metricKey);
+
+  return {
+    label: tile.label,
+    currentValue: isSum
+      ? sumBy(visibleFeatures, getValue)
+      : floorAreaWeightedAverage(visibleFeatures, getValue),
+    unit: metricUnit(visibleFeatures, metricKey) ?? tile.unitFallback,
+    direction: directionForMetric(visibleFeatures, metricKey),
+    rollupHint: isSum ? 'Portfolio total' : 'Floor-area weighted avg',
+    targetLabel: targetLabelFor(program, metricKey),
+  };
+}
+
+/** A floor reads better without a trailing zero: 75%, not 75.0%. */
+function fmtThreshold(fraction) {
+  return `${Number((fraction * 100).toFixed(1))}%`;
+}
+
+// Counts assets over a floor instead of averaging them, so a handful of
+// well-covered towers can't hide the assets that are still short.
+function thresholdShareRollup(metricKey, visibleFeatures, rollup) {
+  const { share, met, total } = shareMeetingThreshold(
+    visibleFeatures,
+    metricKey,
+    rollup.threshold
+  );
+
+  return {
+    label: rollup.label,
+    currentValue: share,
+    unit: rollup.unit ?? '%',
+    // A compliance share always improves upward, whatever the metric's direction.
+    direction: 'Higher is better',
+    // "at or above 100%" is a nonsense way to describe a pass/fail requirement.
+    rollupHint: isDerivedMetric(metricKey)
+      ? `${met} of ${total} passing`
+      : `${met} of ${total} at or above ${fmtThreshold(rollup.threshold)}`,
+    targetLabel: rollup.targetLabel,
+  };
+}
+
+function complianceTile(visibleFeatures) {
+  const ll97Features = visibleFeatures.filter(
+    (feature) => feature.properties.compliance?.ll97Applicable === 'Yes'
+  );
+  const fine2030 =
+    ll97Features.length > 0
+      ? sumBy(ll97Features, (props) => Math.max(0, props.compliance?.fine2030 ?? 0))
+      : null;
+  const nonCompliant = ll97Features.filter(
+    (feature) => feature.properties.compliance?.status2030 === 'Non-Compliant'
+  ).length;
+  const atRisk = ll97Features.filter(
+    (feature) => feature.properties.compliance?.status2030 === 'At Risk'
+  ).length;
+
+  return {
+    label: 'LL97 exposure (2030)',
+    value: ll97Features.length > 0 ? fmtMoney(fine2030) : '$0',
+    hint:
+      ll97Features.length > 0
+        ? `${nonCompliant} non-compliant · ${atRisk} at risk`
+        : 'No LL97-applicable assets in view',
+    goal: null,
+  };
+}
+
+/**
+ * Stats tiles for the assets in view. Only metrics the active program governs
+ * get a tile; portfolio size and LL97 exposure are always-on context.
+ */
+export function computeAggregateStats(visibleFeatures, options) {
+  const { program, programGoals, metricBandFor, scoreFor, now = new Date() } = options;
   const count = visibleFeatures.length;
-  const totalFloorArea = count > 0 ? sumBy(visibleFeatures, (props) => props.floorArea) : null;
+  const governed = governedMetricKeys(program).filter((key) => METRIC_TILES[key]);
 
   if (count === 0) {
-    return {
+    const stats = {
       portfolio: {
         label: 'Portfolio in view',
         value: fmtAssetCount(0),
         hint: 'Adjust filters to include assets',
         goal: null,
       },
-      coverage: emptyStat('Data coverage'),
-      compliance: emptyStat('LL97 exposure (2030)'),
-      ghg: emptyStat(metricMeta('ghg').label),
-      eui: emptyStat('EUI'),
-      water: emptyStat('Water use'),
-      energyStar: emptyStat(metricMeta('energyStar').label),
-      certifications: emptyStat('Certifications'),
     };
+    stats.programCompletion = emptyStat(`${program.label} completion`);
+    stats.targetsMet = emptyStat('Assets meeting all targets');
+    for (const key of governed) {
+      stats[key] = emptyStat(portfolioRollupFor(program, key)?.label ?? METRIC_TILES[key].label);
+    }
+    stats.compliance = emptyStat('LL97 exposure (2030)');
+    return stats;
   }
 
-  const coverageAvg = floorAreaWeightedAverage(
-    visibleFeatures,
-    (props) => props.dataCoverage ?? props.metrics?.coverage?.currentValue
-  );
-  const belowCoverage = visibleFeatures.filter(
-    (feature) => (feature.properties.dataCoverage ?? 0) * 100 < COVERAGE_THRESHOLD_PCT
-  ).length;
+  const metricStats = governed.map((key) => [
+    key,
+    metricTile(key, visibleFeatures, { program, programGoals, metricBandFor, now }),
+  ]);
 
-  const ll97Features = visibleFeatures.filter(
-    (feature) => feature.properties.compliance?.ll97Applicable === 'Yes'
-  );
-  const ll97Fine2030 =
-    ll97Features.length > 0
-      ? sumBy(ll97Features, (props) => Math.max(0, props.compliance?.fine2030 ?? 0))
-      : null;
-  const ll97NonCompliant = ll97Features.filter(
-    (feature) => feature.properties.compliance?.status2030 === 'Non-Compliant'
-  ).length;
-  const ll97AtRisk = ll97Features.filter(
-    (feature) => feature.properties.compliance?.status2030 === 'At Risk'
-  ).length;
-
-  const ghgTotal = sumBy(visibleFeatures, (props) => props.metrics?.ghg?.currentValue);
-  const euiAvg = floorAreaWeightedAverage(
-    visibleFeatures,
-    (props) => props.metrics?.eui?.currentValue
-  );
-  const waterTotal = sumBy(visibleFeatures, (props) => props.metrics?.water?.currentValue);
-  const energyStarAvg = floorAreaWeightedAverage(
-    visibleFeatures,
-    (props) => props.metrics?.energyStar?.currentValue ?? props.energyStarScore
-  );
-  const energyStarEligible = visibleFeatures.filter(
-    (feature) => feature.properties.energyStarEligible
-  ).length;
-
-  const certifiedCount = visibleFeatures.filter((feature) =>
-    hasOperationalCert(feature.properties)
-  ).length;
-  const bc11Count = visibleFeatures.filter((feature) => feature.properties.cert?.bc11).length;
-  const bc12Count = visibleFeatures.filter((feature) => feature.properties.cert?.bc12).length;
-  const bc2Count = visibleFeatures.filter((feature) => feature.properties.cert?.bc2).length;
-
-  return {
+  const stats = {
     portfolio: {
       label: 'Portfolio in view',
       value: fmtAssetCount(count),
-      hint: fmtSqFt(totalFloorArea),
+      hint: fmtSqFt(sumBy(visibleFeatures, (props) => props.floorArea)),
       goal: null,
     },
-    coverage: withGoal(
-      {
-        label: 'Data coverage',
-        value: fmtPct(coverageAvg),
-        hint: [
-          'Floor-area weighted avg',
-          `${belowCoverage} below ${COVERAGE_THRESHOLD_PCT}%`,
-        ].join(' · '),
-      },
-      coverageAvg,
-      'coverage',
-      visibleFeatures,
-      portfolioGoals,
+    programCompletion: programCompletionTile(
+      program,
+      metricStats.map(([, stat]) => stat),
       now
     ),
-    compliance: {
-      label: 'LL97 exposure (2030)',
-      value: ll97Features.length > 0 ? fmtMoney(ll97Fine2030) : '$0',
-      hint:
-        ll97Features.length > 0
-          ? `${ll97NonCompliant} non-compliant · ${ll97AtRisk} at risk`
-          : 'No LL97-applicable assets in view',
-      goal: null,
-    },
-    ghg: withGoal(
-      {
-        label: metricMeta('ghg').label,
-        value: fmtMetricValue(ghgTotal, metricUnit(visibleFeatures, 'ghg')),
-        hint: ['Portfolio total', bandBreakdown(visibleFeatures, 'ghg')]
-          .filter(Boolean)
-          .join(' · '),
-      },
-      ghgTotal,
-      'ghg',
-      visibleFeatures,
-      portfolioGoals,
-      now
-    ),
-    eui: withGoal(
-      {
-        label: 'EUI',
-        value: fmtMetricValue(euiAvg, metricUnit(visibleFeatures, 'eui')),
-        hint: ['Floor-area weighted avg', bandBreakdown(visibleFeatures, 'eui')]
-          .filter(Boolean)
-          .join(' · '),
-      },
-      euiAvg,
-      'eui',
-      visibleFeatures,
-      portfolioGoals,
-      now
-    ),
-    water: withGoal(
-      {
-        label: 'Water use',
-        value: fmtMetricValue(waterTotal, metricUnit(visibleFeatures, 'water')),
-        hint: ['Portfolio total', bandBreakdown(visibleFeatures, 'water')]
-          .filter(Boolean)
-          .join(' · '),
-      },
-      waterTotal,
-      'water',
-      visibleFeatures,
-      portfolioGoals,
-      now
-    ),
-    energyStar: withGoal(
-      {
-        label: metricMeta('energyStar').label,
-        value: fmtMetricValue(
-          energyStarAvg,
-          metricUnit(visibleFeatures, 'energyStar') ?? '1-100'
-        ),
-        hint: ['Floor-area weighted avg', `${energyStarEligible} eligible`].join(' · '),
-      },
-      energyStarAvg,
-      'energyStar',
-      visibleFeatures,
-      portfolioGoals,
-      now
-    ),
-    certifications: {
-      label: 'Certifications',
-      value: certifiedCount === 1 ? '1 asset' : `${certifiedCount} assets`,
-      hint: [
-        'Operational / ongoing',
-        `${energyStarEligible} ENERGY STAR eligible`,
-        `BC1.1 ${bc11Count} · BC1.2 ${bc12Count} · BC2 ${bc2Count}`,
-      ].join(' · '),
-      goal: null,
-    },
+    targetsMet: targetsMetTile(visibleFeatures, program, scoreFor),
   };
+
+  for (const [key, stat] of metricStats) {
+    stats[key] = stat;
+  }
+
+  stats.compliance = complianceTile(visibleFeatures);
+
+  return stats;
 }

@@ -66,9 +66,11 @@ unzip -o -d scripts/source scripts/source/cb_2023_us_county_500k.zip
   Data Coverage) use clamped distance to the portfolio-wide target.
 - **Grey** — binary override when a building fails any active Data Confidence
   check (coverage threshold, tier, source, freshness). Never hides a building.
-- **Height** — number of floors, sqrt-normalized between 150 m and 1200 m so
-  the 1–3 floor industrial assets stay distinguishable next to the 8–25 floor
-  towers. Independent of the active metric.
+- **Map dot size** — floor area (sq ft), sqrt-normalized so mid-size assets stay
+  readable next to the largest towers. Independent of the active metric.
+- **Iso column height** — number of floors, sqrt-normalized between stylized
+  scene units so 1–3 floor industrial assets stay distinguishable next to
+  8–25 floor towers.
 
 ENERGY STAR certification eligibility is Detail Panel only — no map or filter
 role. It requires both a score of 75+ and a complete 12-month whole-building
@@ -76,6 +78,6 @@ data year, which is a separate column from Data Coverage %.
 
 ## Stack
 
-Vite + JavaScript, React 19, MapLibre GL v6 (OpenFreeMap Positron style),
+Vite + JavaScript, React 19, MapLibre GL v6 (OpenFreeMap Positron, Ultra Light styling),
 deck.gl v9 `ColumnLayer` via `MapboxOverlay` (non-interleaved), React Context
 for shared filter/search/selection state.

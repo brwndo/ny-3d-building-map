@@ -1,25 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMapState } from '../context/MapStateContext';
-import { DEFAULT_METRIC } from '../data/colorScale';
 import {
   activeFieldCount,
   defaultsFor,
   GREY_FIELDS,
 } from '../data/filterSchema';
+import { DEFAULT_PROGRAM_ID } from '../data/goalPrograms';
 import SearchBox from './SearchBox';
 import {
-  BUILDING_FILTER_FIELDS,
-  BuildingFilterPanel,
-  CERTIFICATION_FILTER_FIELDS,
-  CertificationsFilterPanel,
-  DataConfidenceFilterPanel,
-  LOCATION_FILTER_FIELDS,
-  LocationFilterPanel,
-  PERFORMANCE_FILTER_FIELDS,
-  PerformanceFilterPanel,
+  FILTER_HIDE_FIELDS,
+  FiltersPanel,
+  GOAL_PROGRAM_FILTER_FIELDS,
+  GoalProgramPanel,
 } from './FilterControls';
 
-function FilterDropdown({ label, activeCount, open, onToggle, onReset, children, panelRef }) {
+function FilterDropdown({
+  label,
+  value,
+  activeCount,
+  open,
+  onToggle,
+  onReset,
+  children,
+  panelRef,
+}) {
   return (
     <div className="controls-popover-wrap" ref={panelRef}>
       <button
@@ -29,6 +33,7 @@ function FilterDropdown({ label, activeCount, open, onToggle, onReset, children,
         aria-expanded={open}
       >
         {label}
+        {value ? <span className="controls-button-value">{value}</span> : null}
         {activeCount > 0 ? ` (${activeCount})` : ''}
       </button>
       {open && (
@@ -55,28 +60,23 @@ export default function MapControls() {
     hideMeta,
     grey,
     greyMeta,
-    setMetricKey,
     setHideField,
     setGreyField,
+    goalProgram,
+    setGoalProgram,
     viewMode,
     setViewMode,
   } = useMapState();
 
   const [openPanel, setOpenPanel] = useState(null);
   const searchRef = useRef(null);
-  const performanceRef = useRef(null);
-  const locationRef = useRef(null);
-  const buildingRef = useRef(null);
-  const certificationsRef = useRef(null);
-  const confidenceRef = useRef(null);
+  const goalProgramRef = useRef(null);
+  const filtersRef = useRef(null);
 
   const panelRefs = {
     search: searchRef,
-    performance: performanceRef,
-    location: locationRef,
-    building: buildingRef,
-    certifications: certificationsRef,
-    confidence: confidenceRef,
+    goalProgram: goalProgramRef,
+    filters: filtersRef,
   };
 
   useEffect(() => {
@@ -100,15 +100,10 @@ export default function MapControls() {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
 
-  const performanceActiveCount = activeFieldCount(PERFORMANCE_FILTER_FIELDS, hide, hideMeta);
-  const locationActiveCount = activeFieldCount(LOCATION_FILTER_FIELDS, hide, hideMeta);
-  const buildingActiveCount = activeFieldCount(BUILDING_FILTER_FIELDS, hide, hideMeta);
-  const certificationsActiveCount = activeFieldCount(
-    CERTIFICATION_FILTER_FIELDS,
-    hide,
-    hideMeta
-  );
-  const confidenceActiveCount = activeFieldCount(GREY_FIELDS, grey, greyMeta);
+  const goalProgramActiveCount = activeFieldCount(GOAL_PROGRAM_FILTER_FIELDS, hide, hideMeta);
+  const filtersActiveCount =
+    activeFieldCount(FILTER_HIDE_FIELDS, hide, hideMeta) +
+    activeFieldCount(GREY_FIELDS, grey, greyMeta);
 
   const resetFields = (fields) => {
     for (const field of fields) {
@@ -116,16 +111,13 @@ export default function MapControls() {
     }
   };
 
-  const resetPerformance = () => {
-    setMetricKey(DEFAULT_METRIC);
-    resetFields(PERFORMANCE_FILTER_FIELDS);
+  const resetGoalProgram = () => {
+    setGoalProgram(DEFAULT_PROGRAM_ID);
+    resetFields(GOAL_PROGRAM_FILTER_FIELDS);
   };
 
-  const resetLocation = () => resetFields(LOCATION_FILTER_FIELDS);
-  const resetBuilding = () => resetFields(BUILDING_FILTER_FIELDS);
-  const resetCertifications = () => resetFields(CERTIFICATION_FILTER_FIELDS);
-
-  const resetConfidence = () => {
+  const resetFilters = () => {
+    resetFields(FILTER_HIDE_FIELDS);
     for (const field of GREY_FIELDS) {
       setGreyField(field.key, defaultsFor([field])[field.key]);
     }
@@ -151,58 +143,26 @@ export default function MapControls() {
         </div>
 
         <FilterDropdown
-          label="Performance"
-          activeCount={performanceActiveCount}
-          open={openPanel === 'performance'}
-          onToggle={() => togglePanel('performance')}
-          onReset={resetPerformance}
-          panelRef={performanceRef}
+          label="Goal Program"
+          value={goalProgram.label}
+          activeCount={goalProgramActiveCount}
+          open={openPanel === 'goalProgram'}
+          onToggle={() => togglePanel('goalProgram')}
+          onReset={resetGoalProgram}
+          panelRef={goalProgramRef}
         >
-          <PerformanceFilterPanel />
+          <GoalProgramPanel />
         </FilterDropdown>
 
         <FilterDropdown
-          label="Location"
-          activeCount={locationActiveCount}
-          open={openPanel === 'location'}
-          onToggle={() => togglePanel('location')}
-          onReset={resetLocation}
-          panelRef={locationRef}
+          label="Filters"
+          activeCount={filtersActiveCount}
+          open={openPanel === 'filters'}
+          onToggle={() => togglePanel('filters')}
+          onReset={resetFilters}
+          panelRef={filtersRef}
         >
-          <LocationFilterPanel />
-        </FilterDropdown>
-
-        <FilterDropdown
-          label="Building Size & Type"
-          activeCount={buildingActiveCount}
-          open={openPanel === 'building'}
-          onToggle={() => togglePanel('building')}
-          onReset={resetBuilding}
-          panelRef={buildingRef}
-        >
-          <BuildingFilterPanel />
-        </FilterDropdown>
-
-        <FilterDropdown
-          label="Certifications"
-          activeCount={certificationsActiveCount}
-          open={openPanel === 'certifications'}
-          onToggle={() => togglePanel('certifications')}
-          onReset={resetCertifications}
-          panelRef={certificationsRef}
-        >
-          <CertificationsFilterPanel />
-        </FilterDropdown>
-
-        <FilterDropdown
-          label="Confidence"
-          activeCount={confidenceActiveCount}
-          open={openPanel === 'confidence'}
-          onToggle={() => togglePanel('confidence')}
-          onReset={resetConfidence}
-          panelRef={confidenceRef}
-        >
-          <DataConfidenceFilterPanel />
+          <FiltersPanel />
         </FilterDropdown>
 
         <div className="view-mode-toggle" role="group" aria-label="View mode">
@@ -221,6 +181,14 @@ export default function MapControls() {
             onClick={() => setViewMode('grid')}
           >
             Grid
+          </button>
+          <button
+            type="button"
+            className={`controls-segment${viewMode === 'iso' ? ' controls-segment--active' : ''}`}
+            aria-pressed={viewMode === 'iso'}
+            onClick={() => setViewMode('iso')}
+          >
+            Iso
           </button>
         </div>
       </div>

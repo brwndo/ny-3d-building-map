@@ -65,15 +65,21 @@ export default function GoalsEditor({ onClose }) {
     <div className="goals-editor" aria-label="Performance goals editor">
       <div className="goals-editor-header">
         <div>
-          <h2>Performance goals</h2>
+          <h2>Custom targets</h2>
           <p className="goals-editor-sub">
-            Portfolio targets and deadlines. Map colors still use per-asset targets.
+            The Custom program's portfolio targets and deadlines. Preset programs (LL97, ENERGY
+            STAR, GRESB, Net Zero) carry fixed targets set by their issuing authority and are
+            read-only.
           </p>
         </div>
         <button type="button" className="close-button" onClick={onClose} aria-label="Close">
           ×
         </button>
       </div>
+
+      <p className="goals-editor-note">
+        Absolute targets (GHG, water) are split across assets by floor-area share to color the map.
+      </p>
 
       <div className="goals-editor-body">
         {rows.map(({ key, label, unit, goal, defaultGoal }) => (

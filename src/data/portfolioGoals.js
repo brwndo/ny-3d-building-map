@@ -1,4 +1,5 @@
 import { METRICS } from './colorScale';
+import { derivedMetricMeta, resolveAssetMetric } from './derivedMetrics';
 import { fmtMetricValue } from './format';
 
 export const STORAGE_KEY = 'enertiv.portfolioGoals.v1';
@@ -24,6 +25,11 @@ const PACE_TOLERANCE = 0.05;
 
 export function isGoalMetric(key) {
   return GOAL_METRIC_KEYS.includes(key);
+}
+
+/** Absolute metrics roll up as a sum; intensities and scores are weighted. */
+export function isSumMetric(key) {
+  return SUM_KEYS.has(key);
 }
 
 export function goalMetricMeta(key) {
@@ -57,11 +63,19 @@ function floorAreaWeightedAverage(features, getValue) {
   return totalWeight > 0 ? weightedSum / totalWeight : null;
 }
 
-function aggregateMetricField(features, metricKey, field) {
-  const getValue = (props) => props.metrics?.[metricKey]?.[field];
+/** Rolls an arbitrary per-asset value up with this metric's aggregation rule. */
+export function aggregateValues(features, metricKey, getValue) {
   return SUM_KEYS.has(metricKey)
     ? sumBy(features, getValue)
     : floorAreaWeightedAverage(features, getValue);
+}
+
+function aggregateMetricField(features, metricKey, field) {
+  return aggregateValues(
+    features,
+    metricKey,
+    (props) => resolveAssetMetric(props, metricKey)?.[field]
+  );
 }
 
 function modalYear(features, metricKey, field) {
@@ -76,7 +90,7 @@ function modalYear(features, metricKey, field) {
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
 }
 
-function yearEndDeadline(year) {
+export function yearEndDeadline(year) {
   if (year == null) return null;
   return `${Number(year)}-12-31`;
 }
@@ -88,6 +102,8 @@ function deadlineYear(deadline) {
 }
 
 export function directionForMetric(features, metricKey) {
+  const derived = derivedMetricMeta(metricKey);
+  if (derived) return derived.direction;
   return (
     features[0]?.properties.metrics?.[metricKey]?.direction ??
     (SUM_KEYS.has(metricKey) || metricKey === 'eui'
@@ -97,6 +113,8 @@ export function directionForMetric(features, metricKey) {
 }
 
 export function unitForMetric(features, metricKey) {
+  const derived = derivedMetricMeta(metricKey);
+  if (derived) return derived.unit;
   return features[0]?.properties.metrics?.[metricKey]?.unit ?? null;
 }
 
@@ -276,11 +294,12 @@ export function formatDeadlineHint(deadline, now = new Date()) {
   return `Due Dec ${year} · ${Math.round(yearsLeft)}y left`;
 }
 
-export function formatGoalLine(goal, unit) {
+/** Names what the target is for, e.g. "LL97 2030-2034 cap 28,378 mtCO2e by 2030". */
+export function formatGoalLine(goal, unit, targetLabel = 'Goal') {
   if (!goal || goal.targetValue == null) return null;
   const year = deadlineYear(goal.deadline);
   const target = fmtMetricValue(goal.targetValue, unit);
-  return year != null ? `Goal ${target} · ${year}` : `Goal ${target}`;
+  return year != null ? `${targetLabel} ${target} by ${year}` : `${targetLabel} ${target}`;
 }
 
 /** Full comparison payload for a stats tile. */
