@@ -20,10 +20,12 @@ export default function HoverPopup({ info }) {
       <div>{props.address}, {props.city}</div>
       <div>{goalProgram.label}</div>
       <div>
-        <strong>{formatCompletion(score)}</strong>
-        {score.band ? ` · ${score.band}` : ''}
+        <strong>{formatCompletion(score, goalProgram)}</strong>
+        {score.band && score.band !== formatCompletion(score, goalProgram)
+          ? ` · ${score.band}`
+          : ''}
       </div>
-      {score.covered && <div>{formatTargetsMet(score)}</div>}
+      {score.covered && <div>{formatTargetsMet(score, goalProgram)}</div>}
       {missing.length > 0 && <div>Short on: {missing.join(', ')}</div>}
       <div>
         Confidence: <strong>{props.confidenceTier}</strong>

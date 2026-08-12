@@ -4,14 +4,13 @@
 // effect - HIDE_FIELDS remove buildings from the map, GREY_FIELDS only
 // override their color.
 
-import { BANDS } from './colorScale';
+import { mapBandKeys } from './goalPrograms';
 
 // Sentinel for "this building has no value for this field" (certifications use
 // the literal string 'None' in the sheet, normalized to null at prep time).
 export const NONE = '__none__';
 export const NONE_LABEL = 'None';
 
-const BAND_ORDER = [...BANDS].map((b) => b.key).reverse();
 const TIER_ORDER = ['Verified', 'Estimated', 'Missing'];
 
 export const HIDE_FIELDS = [
@@ -20,9 +19,9 @@ export const HIDE_FIELDS = [
     group: 'performance',
     kind: 'multi',
     label: 'Show only bands',
-    // Fixed rather than dataset-derived: the band set must not shift when the
-    // active goal program changes out from under a selection.
-    options: BAND_ORDER,
+    // Options come from the active program's mapScale so the filter vocabulary
+    // matches the legend (binary / gate count / trajectory).
+    optionsFrom: (ctx) => mapBandKeys(ctx.goalProgram),
     get: (p, ctx) => ctx.bandFor(p),
   },
   {
@@ -155,10 +154,14 @@ function sortByOrder(values, order) {
 }
 
 // Option lists and range bounds come from the loaded dataset, never hardcoded.
-export function deriveFieldMeta(fields, features, ctx) {
+// Band options are an exception: they follow the active program's mapScale.
+export function deriveFieldMeta(fields, features, ctx = {}) {
   const meta = {};
   for (const field of fields) {
-    if (field.kind === 'multi' && field.options) {
+    if (field.kind === 'multi' && field.optionsFrom) {
+      const options = field.optionsFrom(ctx).map((v) => ({ value: v, label: v }));
+      meta[field.key] = { options };
+    } else if (field.kind === 'multi' && field.options) {
       meta[field.key] = { options: field.options.map((v) => ({ value: v, label: v })) };
     } else if (field.kind === 'multi') {
       const present = new Set();

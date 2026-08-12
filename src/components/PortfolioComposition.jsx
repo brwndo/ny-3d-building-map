@@ -1,16 +1,18 @@
 import { useMemo } from 'react';
 import { useMapState } from '../context/MapStateContext';
 import { computeLeedInventory } from '../data/certs';
+import { governsMetric } from '../data/goalPrograms';
 
 /**
- * What the portfolio in view is made of, credential-wise. Deliberately not a
- * goal tile: a LEED level is a category, so there is no target to progress
- * toward and no band to earn.
+ * What the portfolio in view is made of, credential-wise. Only shown when the
+ * active program grades certifications (GRESB). Deliberately not a goal tile:
+ * a LEED level is a category, so there is no target to progress toward.
  */
 export default function PortfolioComposition() {
-  const { visibleFeatures } = useMapState();
+  const { visibleFeatures, goalProgram } = useMapState();
   const leed = useMemo(() => computeLeedInventory(visibleFeatures), [visibleFeatures]);
 
+  if (!governsMetric(goalProgram, 'certifications')) return null;
   if (leed.totalAssets === 0) return null;
 
   return (

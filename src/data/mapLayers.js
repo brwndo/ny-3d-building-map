@@ -54,8 +54,8 @@ export function createCountyLabelsLayer(counties, zoom) {
     getAlignmentBaseline: 'center',
     outlineWidth: 2,
     outlineColor: [255, 255, 255, Math.min(255, opacity + 50)],
-    fontFamily: 'system-ui, sans-serif',
-    fontWeight: 500,
+    fontFamily: 'Geist Sans, system-ui, sans-serif',
+    fontWeight: 400,
   });
 }
 

@@ -17,20 +17,30 @@ import {
 } from '../data/portfolioGoals';
 import {
   bandForAsset,
+  belowConfidenceThreshold,
+  confidenceCoveragePct,
   createProgramContext,
   getProgram,
   governedMetricKeys,
   loadProgramId,
+  mapScaleFor,
   resolveProgramGoals,
   saveProgramId,
   scoreAsset,
 } from '../data/goalPrograms';
 
+function greyDefaultsForProgram(program) {
+  return {
+    ...defaultsFor(GREY_FIELDS),
+    coverage: { enabled: true, value: confidenceCoveragePct(program) },
+  };
+}
+
 const MapStateContext = createContext(null);
 
 export function MapStateProvider({ buildings, boundary, counties, children }) {
   const [hide, setHide] = useState(() => defaultsFor(HIDE_FIELDS));
-  const [grey, setGrey] = useState(() => defaultsFor(GREY_FIELDS));
+  const [grey, setGrey] = useState(() => greyDefaultsForProgram(getProgram(loadProgramId())));
   const [selectedId, setSelectedId] = useState(null);
   const [flyToRequest, setFlyToRequest] = useState(null); // {coords, ts}
   const [viewMode, setViewMode] = useState('map'); // 'map' | 'grid' | 'iso'
@@ -62,9 +72,8 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     [features, goalProgram, programContext]
   );
 
-  // Color asks one question of every asset: how much of the active program does
-  // it satisfy? No metric is singled out, so the legend means the same thing
-  // whatever program is on.
+  // Color asks one question of every asset under the active program's mapScale
+  // (binary pass/fail, gate count, or % progress) — not a single shared ontology.
   const scoreFor = useCallback(
     (props) => scoreAsset(props, goalProgram, programContext),
     [goalProgram, programContext]
@@ -81,12 +90,21 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     const nextProgram = getProgram(nextId);
     setProgramIdState(nextProgram.id);
     saveProgramId(nextProgram.id);
-    // Blockers belong to the program that named them.
+    // Blockers and band vocabulary belong to the program that named them.
     setFocusMetricKey(null);
+    setHide((prev) => ({ ...prev, band: [] }));
+    setGrey((prev) => ({
+      ...prev,
+      coverage: { enabled: true, value: confidenceCoveragePct(nextProgram) },
+    }));
   }, []);
 
-  // Option lists and range bounds, derived from the loaded dataset.
-  const hideMeta = useMemo(() => deriveFieldMeta(HIDE_FIELDS, features), [features]);
+  // Option lists and range bounds, derived from the loaded dataset. Band
+  // options follow the active program's mapScale.
+  const hideMeta = useMemo(
+    () => deriveFieldMeta(HIDE_FIELDS, features, { goalProgram }),
+    [features, goalProgram]
+  );
   const greyMeta = useMemo(() => deriveFieldMeta(GREY_FIELDS, features), [features]);
 
   // Column height and the (read-only) State select need dataset facts that
@@ -124,8 +142,10 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
   }, [features, resolvedHide, loadedAt, bandFor]);
 
   const isGreyed = useCallback(
-    (props) => !passesConfidence(props, resolvedGrey, { now: loadedAt }),
-    [resolvedGrey, loadedAt]
+    (props) =>
+      belowConfidenceThreshold(props, goalProgram) ||
+      !passesConfidence(props, resolvedGrey, { now: loadedAt }),
+    [goalProgram, resolvedGrey, loadedAt]
   );
 
   const greyedCount = useMemo(
@@ -142,7 +162,7 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
 
   const resetFilters = () => {
     setHide(defaultsFor(HIDE_FIELDS));
-    setGrey(defaultsFor(GREY_FIELDS));
+    setGrey(greyDefaultsForProgram(goalProgram));
   };
 
   const setPortfolioGoal = useCallback((metricKeyToPatch, patch) => {
@@ -166,8 +186,10 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
 
   const metricFocusIds = useMemo(() => {
     if (!focusMetricKey) return null;
-    return new Set(blockerIdsFor(focusMetricKey, visibleFeatures, metricBandFor));
-  }, [focusMetricKey, visibleFeatures, metricBandFor]);
+    return new Set(
+      blockerIdsFor(focusMetricKey, visibleFeatures, metricBandFor, goalProgram)
+    );
+  }, [focusMetricKey, visibleFeatures, metricBandFor, goalProgram]);
 
   const isMetricDimmed = useCallback(
     (props) => Boolean(metricFocusIds && !metricFocusIds.has(props.id)),
@@ -214,6 +236,7 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     scoreFor,
     bandFor,
     metricBandFor,
+    mapScale: mapScaleFor(goalProgram),
     focusMetricKey,
     setFocusMetricKey,
     isMetricDimmed,

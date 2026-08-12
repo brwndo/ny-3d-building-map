@@ -1,28 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMapState } from '../context/MapStateContext';
-import { BANDS, GREY, METRICS } from '../data/colorScale';
-import { uncoveredAssetCount } from '../data/goalPrograms';
-
-const BAND_MEANING = {
-  'Target Met': 'every target met',
-  'On Track': '75%+ complete',
-  'At Risk': '40%+ complete',
-  'Off Track': 'under 40% complete',
-};
+import { bandCss, GREY } from '../data/colorScale';
+import { confidenceCoveragePct, mapScaleFor, uncoveredAssetCount } from '../data/goalPrograms';
 
 export default function Legend() {
-  const { goalProgram, governedMetrics, programContext, visibleFeatures } = useMapState();
+  const { goalProgram, programContext, visibleFeatures } = useMapState();
   const [collapsed, setCollapsed] = useState(false);
 
-  const targetNames = useMemo(
-    () =>
-      METRICS.filter((m) => governedMetrics.includes(m.key))
-        .map((m) => m.label)
-        .join(', '),
-    [governedMetrics]
-  );
+  const mapScale = mapScaleFor(goalProgram);
   const uncovered = uncoveredAssetCount(visibleFeatures, goalProgram, programContext);
-  const targetCount = governedMetrics.length;
 
   return (
     <div className={`map-legend${collapsed ? ' map-legend--collapsed' : ''}`}>
@@ -41,20 +27,15 @@ export default function Legend() {
       {!collapsed && (
         <div className="legend-body" id="map-legend-body">
           <div className="legend">
-            <div className="legend-title">
-              Completion toward {targetCount === 1 ? 'the target' : `all ${targetCount} targets`}
-            </div>
-            <div className="legend-program">{goalProgram.label}</div>
-            <div className="legend-purpose">{targetNames}</div>
-            {[...BANDS].reverse().map((band) => (
+            <div className="legend-title">{goalProgram.label}</div>
+            {mapScale.bands.map((band) => (
               <div key={band.key} className="legend-row">
-                <span
-                  className="legend-swatch"
-                  style={{ background: `rgb(${band.color.join(',')})` }}
-                />
+                <span className="legend-swatch" style={{ background: bandCss(band.key) }} />
                 <span>
                   {band.key}
-                  <span className="legend-meaning"> — {BAND_MEANING[band.key]}</span>
+                  {band.meaning ? (
+                    <span className="legend-meaning"> — {band.meaning}</span>
+                  ) : null}
                 </span>
               </div>
             ))}
@@ -66,7 +47,7 @@ export default function Legend() {
             )}
             <div className="legend-row">
               <span className="legend-swatch" style={{ background: `rgb(${GREY.join(',')})` }} />
-              <span>Below confidence threshold</span>
+              <span>Below {confidenceCoveragePct(goalProgram)}% data coverage</span>
             </div>
           </div>
         </div>

@@ -9,10 +9,11 @@ export default function App() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    const dataBase = `${import.meta.env.BASE_URL}data`;
     Promise.all([
-      fetch('/data/buildings.geojson').then((r) => r.json()),
-      fetch('/data/ny-state-boundary.geojson').then((r) => r.json()),
-      fetch('/data/ny-counties.geojson').then((r) => r.json()),
+      fetch(`${dataBase}/buildings.geojson`).then((r) => r.json()),
+      fetch(`${dataBase}/ny-state-boundary.geojson`).then((r) => r.json()),
+      fetch(`${dataBase}/ny-counties.geojson`).then((r) => r.json()),
     ])
       .then(([b, n, c]) => {
         setBuildings(b);

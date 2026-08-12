@@ -142,9 +142,9 @@ export default function AssetDetailsDrawer() {
           <div className="drawer-stat-block">
             <div className="drawer-block-head">
               <h3>Performance vs {goalProgram.label}</h3>
-              <Chip label={formatCompletion(score)} band={score.band} />
+              <Chip label={formatCompletion(score, goalProgram)} band={score.band} />
             </div>
-            {score.covered && <p className="hint">{formatTargetsMet(score)}</p>}
+            {score.covered && <p className="hint">{formatTargetsMet(score, goalProgram)}</p>}
             <p className="hint">{goalProgram.purpose}</p>
             {/* A derived predicate only means something while a program grades
                 it, so it stays out of the drawer the rest of the time. */}

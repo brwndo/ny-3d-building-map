@@ -7,6 +7,8 @@ confidence checks fail. Desktop only, light mode, no backend, no API keys.
 Spec: `Enertiv Product Management/ny-3d-map-requirements.md` and
 `ny-3d-map-system-design.md`.
 
+Live: https://brwndo.github.io/ny-3d-building-map/
+
 ## Run
 
 ```bash

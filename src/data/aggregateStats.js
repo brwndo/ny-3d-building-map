@@ -1,10 +1,11 @@
-import { METRICS } from './colorScale';
+import { BAND_TONES, METRICS } from './colorScale';
 import { isDerivedMetric, resolveAssetMetric } from './derivedMetrics';
 import { fmtMetricValue, fmtMoney, fmtNumber, fmtPct } from './format';
 import {
   compareToGoal,
   deadlineYearFromGoal,
   directionForMetric,
+  expectedProgressByDate,
   formatDeadlineHint,
   formatGoalLine,
   isSumMetric,
@@ -15,10 +16,35 @@ import {
 import {
   bandForProgress,
   governedMetricKeys,
+  isClearedMetricBand,
+  mapBandKeys,
+  mapScaleFor,
+  metricAboutFor,
+  OVERVIEW_CHART_TYPES,
   portfolioRollupFor,
   shareMeetingThreshold,
   targetLabelFor,
+  tileLabelFor,
+  TOP_LEVEL_SCORE_TYPES,
+  topLevelScoreFor,
 } from './goalPrograms';
+
+/** How a metric tile visualizes progress toward its portfolio goal. */
+export const METRIC_TILE_CHART_TYPES = {
+  bullet: 'bullet',
+  shareVsRequired: 'shareVsRequired',
+  /** Pass/fail share: met/total headline + unit bar of assets clearing the gate. */
+  assetCount: 'assetCount',
+  scoreRanges: 'scoreRanges',
+};
+
+/** ENERGY STAR 1–100 score buckets — eligibility gate sits at 75. */
+export const ENERGY_STAR_SCORE_RANGES = [
+  { label: '90–100', min: 90, max: 100, tone: 'best' },
+  { label: '75–89', min: 75, max: 89, tone: 'good' },
+  { label: '50–74', min: 50, max: 74, tone: 'warn' },
+  { label: '1–49', min: 1, max: 49, tone: 'worst' },
+];
 
 const COVERAGE_THRESHOLD_PCT = 65;
 
@@ -95,7 +121,7 @@ function bandBreakdown(features, metricKey, metricBandFor) {
   return formatBandCounts(counts);
 }
 
-// Worst -> best, matching the legend order.
+// Worst -> best for classic progress bands; program mapScale may differ.
 function formatBandCounts(counts) {
   return [...counts.entries()]
     .sort((a, b) => bandRank(a[0]) - bandRank(b[0]))
@@ -103,11 +129,11 @@ function formatBandCounts(counts) {
     .join(' · ');
 }
 
-const BAND_ORDER = ['Off Track', 'At Risk', 'On Track', 'Target Met'];
+const CLASSIC_BAND_ORDER = ['Off Track', 'At Risk', 'On Track', 'Target Met'];
 
 function bandRank(band) {
-  const index = BAND_ORDER.indexOf(band);
-  return index === -1 ? BAND_ORDER.length : index;
+  const index = CLASSIC_BAND_ORDER.indexOf(band);
+  return index === -1 ? CLASSIC_BAND_ORDER.length : index;
 }
 
 function emptyStat(label, hint = 'No matching assets') {
@@ -134,15 +160,11 @@ function mean(values) {
   return values.reduce((acc, v) => acc + v, 0) / values.length;
 }
 
-/**
- * How close the portfolio is to the whole program: the mean of the per-metric
- * progress already shown on the tiles below, so the headline and the numbers
- * backing it can never disagree.
- */
-function programCompletionTile(program, metricStats, now) {
+function collectMetricProgress(metricStats, programGoals) {
   const progresses = [];
   const expected = [];
   const deadlines = [];
+  const baselineYears = [];
 
   for (const stat of metricStats) {
     if (stat.goal?.p == null) continue;
@@ -151,7 +173,39 @@ function programCompletionTile(program, metricStats, now) {
     if (stat.goal.deadline) deadlines.push(stat.goal.deadline);
   }
 
-  const label = `${program.label} completion`;
+  for (const goal of Object.values(programGoals ?? {})) {
+    if (!goal) continue;
+    if (goal.baselineYear != null) baselineYears.push(goal.baselineYear);
+  }
+
+  return { progresses, expected, deadlines, baselineYears };
+}
+
+function completionTimeline(deadlines, baselineYears, now) {
+  const endYear =
+    deadlines.length > 0
+      ? Math.max(...deadlines.map((d) => deadlineYearFromGoal({ deadline: d })))
+      : null;
+  const startYear =
+    baselineYears.length > 0
+      ? Math.min(...baselineYears)
+      : endYear != null
+        ? endYear - 5
+        : null;
+
+  return {
+    caption: deadlineCaption(deadlines, now),
+    startYear,
+    endYear,
+  };
+}
+
+function meanProgressTile(program, metricStats, now, programGoals, { label, hint, scoreType, overviewChart, gates }) {
+  const { progresses, expected, deadlines, baselineYears } = collectMetricProgress(
+    metricStats,
+    programGoals
+  );
+
   if (progresses.length === 0) {
     return emptyStat(label, 'No measurable targets in view');
   }
@@ -159,23 +213,179 @@ function programCompletionTile(program, metricStats, now) {
   const p = mean(progresses);
   const expectedP = expected.length > 0 ? mean(expected) : null;
   const pace = paceStatus(p, expectedP);
+  const timeline = completionTimeline(deadlines, baselineYears, now);
+
+  const defaultHint =
+    progresses.length === 1
+      ? 'Portfolio progress toward the target'
+      : `Mean progress across ${progresses.length} targets`;
 
   return {
     label,
     value: fmtPct(p),
-    hint:
-      progresses.length === 1
-        ? 'Portfolio progress toward the target'
-        : `Mean progress across ${progresses.length} targets`,
+    hint: hint ?? defaultHint,
+    scoreType,
+    overviewChart: overviewChart ?? OVERVIEW_CHART_TYPES.trajectory,
+    gates: gates ?? null,
+    split: null,
     progress: {
       p,
+      expectedP,
       band: bandForProgress(p),
       pace,
       paceBand: paceBand(pace),
-      caption: deadlineCaption(deadlines, now),
+      ...timeline,
     },
     goal: null,
   };
+}
+
+/**
+ * Share of covered assets clearing every program bar. The headline and bar both
+ * show that share (target = 100% clearing). Pace still follows the deadline window.
+ */
+function complianceShareTile(program, visibleFeatures, scoreFor, now, programGoals, scoreCfg) {
+  const label = scoreCfg.label;
+  let meetingAll = 0;
+  let covered = 0;
+
+  for (const feature of visibleFeatures) {
+    const score = scoreFor(feature.properties);
+    if (!score.covered) continue;
+    covered += 1;
+    if (score.met === score.total) meetingAll += 1;
+  }
+
+  if (covered === 0) {
+    return emptyStat(label, 'No assets covered by this program');
+  }
+
+  const share = meetingAll / covered;
+  const primaryKey = governedMetricKeys(program)[0];
+  const goal = primaryKey ? programGoals?.[primaryKey] : null;
+
+  let deadlines = [];
+  let baselineYears = [];
+  let expectedP = null;
+
+  if (goal?.deadline) {
+    deadlines = [goal.deadline];
+    if (goal.baselineYear != null) baselineYears = [goal.baselineYear];
+    expectedP = expectedProgressByDate(
+      {
+        ...goal,
+        targetValue: 1,
+        baselineValue: goal.baselineValue != null ? goal.baselineValue : 0,
+      },
+      now
+    );
+  } else if (program.deadlineYear != null) {
+    deadlines = [`${program.deadlineYear}-12-31`];
+    expectedP = expectedProgressByDate(
+      {
+        deadline: deadlines[0],
+        baselineYear: program.deadlineYear - 5,
+        baselineValue: 0,
+        targetValue: 1,
+      },
+      now
+    );
+  }
+
+  const p = share;
+  const pace = paceStatus(p, expectedP);
+  const timeline = completionTimeline(deadlines, baselineYears, now);
+  const unmet = covered - meetingAll;
+  const splitLabels = scoreCfg.splitLabels ?? { met: 'Clearing bar', unmet: 'Short of bar' };
+
+  return {
+    label,
+    value: fmtPct(share),
+    hint: scoreCfg.hint ?? `${meetingAll} of ${covered} assets clear the bar`,
+    scoreType: TOP_LEVEL_SCORE_TYPES.complianceShare,
+    overviewChart: scoreCfg.overviewChart ?? OVERVIEW_CHART_TYPES.complianceSplit,
+    gates: null,
+    split: {
+      met: meetingAll,
+      unmet,
+      covered,
+      metLabel: splitLabels.met,
+      unmetLabel: splitLabels.unmet,
+      metShare: share,
+      unmetShare: unmet / covered,
+    },
+    progress: {
+      p,
+      expectedP,
+      band: bandForProgress(p),
+      pace,
+      paceBand: paceBand(pace),
+      ...timeline,
+    },
+    goal: null,
+    meetingAll,
+    covered,
+  };
+}
+
+/** One row per submission bar: current portfolio value vs required share/target. */
+function readinessGatesFromMetricStats(metricStats) {
+  return metricStats
+    .filter((stat) => stat.currentValue != null && stat.goal?.targetValue != null)
+    .map((stat) => {
+      const current = Number(stat.currentValue);
+      const target = Number(stat.goal.targetValue);
+      const unit = stat.unit ?? '%';
+      const fill = target === 0 ? (current <= 0 ? 1 : 0) : Math.min(1, Math.max(0, current / target));
+      const isAssetCount =
+        stat.tileChart === METRIC_TILE_CHART_TYPES.assetCount &&
+        stat.met != null &&
+        stat.total != null;
+      return {
+        key: stat.metricKey,
+        label: stat.label,
+        current,
+        target,
+        unit,
+        fill,
+        met: isAssetCount ? stat.met : null,
+        total: isAssetCount ? stat.total : null,
+        chart: isAssetCount
+          ? METRIC_TILE_CHART_TYPES.assetCount
+          : METRIC_TILE_CHART_TYPES.shareVsRequired,
+        band: bandForProgress(stat.goal?.p ?? fill),
+        metGate: fill >= 1 - 1e-9,
+        p: stat.goal?.p ?? null,
+      };
+    });
+}
+
+/**
+ * Portfolio headline for the active program. Type comes from the program's
+ * topLevelScore config so compliance gates and trajectories are not forced
+ * through a generic mean-completion label.
+ */
+function programCompletionTile(program, metricStats, now, programGoals, visibleFeatures, scoreFor) {
+  const scoreCfg = topLevelScoreFor(program);
+  const { type, label, hint, overviewChart } = scoreCfg;
+
+  if (type === TOP_LEVEL_SCORE_TYPES.complianceShare) {
+    return complianceShareTile(program, visibleFeatures, scoreFor, now, programGoals, scoreCfg);
+  }
+
+  const gates =
+    overviewChart === OVERVIEW_CHART_TYPES.readinessGates ||
+    type === TOP_LEVEL_SCORE_TYPES.readinessProgress
+      ? readinessGatesFromMetricStats(metricStats)
+      : null;
+
+  return meanProgressTile(program, metricStats, now, programGoals, {
+    label,
+    hint,
+    scoreType: type,
+    overviewChart: overviewChart ?? OVERVIEW_CHART_TYPES.trajectory,
+    gates,
+  });
 }
 
 /** One deadline reads as a due date; several read as a window. */
@@ -224,6 +434,41 @@ function targetsMetTile(visibleFeatures, program, scoreFor) {
       .filter(Boolean)
       .join(' · '),
     goal: null,
+    meetingAll,
+    covered,
+  };
+}
+
+/**
+ * Program color-band mix for assets in view: share, count, and bar scale.
+ * Always returns every band from the active mapScale so the breakdown stays
+ * aligned with the legend.
+ */
+export function computeAssetBandBreakdown(visibleFeatures, scoreFor, program) {
+  const order = mapBandKeys(program);
+  const counts = Object.fromEntries(order.map((band) => [band, 0]));
+  let covered = 0;
+
+  for (const feature of visibleFeatures) {
+    const score = scoreFor(feature.properties);
+    if (!score?.covered || !score.band) continue;
+    covered += 1;
+    if (counts[score.band] != null) counts[score.band] += 1;
+  }
+
+  return {
+    covered,
+    title: mapScaleFor(program).legendTitle,
+    rows: order.map((band) => {
+      const count = counts[band];
+      return {
+        band,
+        count,
+        total: covered,
+        pct: covered > 0 ? count / covered : 0,
+        share: covered > 0 ? count / covered : 0,
+      };
+    }),
   };
 }
 
@@ -232,11 +477,11 @@ function targetsMetTile(visibleFeatures, program, scoreFor) {
  * the program does not score the asset on this metric at all, so it is not
  * holding anything back.
  */
-export function blockerIdsFor(metricKey, visibleFeatures, metricBandFor) {
+export function blockerIdsFor(metricKey, visibleFeatures, metricBandFor, program) {
   const ids = [];
   for (const feature of visibleFeatures) {
     const band = metricBandFor(feature.properties, metricKey);
-    if (band == null || band === 'Target Met') continue;
+    if (band == null || isClearedMetricBand(band, program)) continue;
     ids.push(feature.properties.id);
   }
   return ids;
@@ -245,14 +490,42 @@ export function blockerIdsFor(metricKey, visibleFeatures, metricBandFor) {
 function metricTile(metricKey, visibleFeatures, { program, programGoals, metricBandFor, now }) {
   const tile = METRIC_TILES[metricKey];
   const rollup = portfolioRollupFor(program, metricKey);
-  const rolled =
-    rollup?.rollup === 'thresholdShare'
-      ? thresholdShareRollup(metricKey, visibleFeatures, rollup)
-      : defaultRollup(metricKey, visibleFeatures, tile, program);
+  const isThresholdShare = rollup?.rollup === 'thresholdShare';
+  const rolled = isThresholdShare
+    ? thresholdShareRollup(metricKey, visibleFeatures, rollup)
+    : defaultRollup(metricKey, visibleFeatures, tile, program);
+
+  const configuredChart = program.metrics[metricKey]?.tileChart;
+  const tileChart =
+    configuredChart ??
+    (isThresholdShare
+      ? METRIC_TILE_CHART_TYPES.assetCount
+      : METRIC_TILE_CHART_TYPES.bullet);
+
+  const scoreRanges =
+    tileChart === METRIC_TILE_CHART_TYPES.scoreRanges
+      ? scoreRangeBreakdown(
+          visibleFeatures,
+          metricKey,
+          program.metrics[metricKey]?.scoreRanges ?? ENERGY_STAR_SCORE_RANGES
+        )
+      : null;
+
+  const useAssetCount = tileChart === METRIC_TILE_CHART_TYPES.assetCount && rolled.total != null;
 
   const stat = {
     label: rolled.label,
-    value: fmtMetricValue(rolled.currentValue, rolled.unit),
+    about: metricAboutFor(program, metricKey),
+    value: useAssetCount
+      ? `${rolled.met} / ${rolled.total}`
+      : fmtMetricValue(rolled.currentValue, rolled.unit),
+    currentValue: rolled.currentValue,
+    met: rolled.met ?? null,
+    total: rolled.total ?? null,
+    direction: rolled.direction,
+    unit: rolled.unit,
+    tileChart,
+    scoreRanges,
     hint: [
       rolled.rollupHint,
       // The threshold hint already says how many assets clear the bar.
@@ -262,7 +535,7 @@ function metricTile(metricKey, visibleFeatures, { program, programGoals, metricB
       .filter(Boolean)
       .join(' · '),
     metricKey,
-    blockerIds: blockerIdsFor(metricKey, visibleFeatures, metricBandFor),
+    blockerIds: blockerIdsFor(metricKey, visibleFeatures, metricBandFor, program),
   };
 
   const goal = programGoals?.[metricKey];
@@ -281,19 +554,62 @@ function metricTile(metricKey, visibleFeatures, { program, programGoals, metricB
   };
 }
 
+/**
+ * Count assets into inclusive score buckets so the tile can show distribution,
+ * not only a portfolio average.
+ */
+export function scoreRangeBreakdown(features, metricKey, ranges) {
+  const rows = ranges.map((range) => ({
+    label: range.label,
+    min: range.min,
+    max: range.max,
+    tone: range.tone,
+    count: 0,
+    color: toneCss(range.tone),
+  }));
+  let total = 0;
+
+  for (const feature of features) {
+    const value =
+      resolveAssetMetric(feature.properties, metricKey)?.currentValue ??
+      (metricKey === 'energyStar' ? feature.properties.energyStarScore : null);
+    if (value == null || !Number.isFinite(value)) continue;
+    total += 1;
+    const bucket = rows.find((row) => value >= row.min && value <= row.max);
+    if (bucket) bucket.count += 1;
+  }
+
+  return {
+    total,
+    rows: rows.map((row) => ({
+      label: row.label,
+      count: row.count,
+      total,
+      pct: total > 0 ? row.count / total : 0,
+      color: row.color,
+    })),
+  };
+}
+
+function toneCss(tone) {
+  const entry = BAND_TONES[tone];
+  if (!entry) return '#9ea3ac';
+  return `rgb(${entry.color.join(',')})`;
+}
+
 function defaultRollup(metricKey, visibleFeatures, tile, program) {
   const getValue =
     tile.getValue ?? ((props) => resolveAssetMetric(props, metricKey)?.currentValue);
   const isSum = isSumMetric(metricKey);
 
   return {
-    label: tile.label,
+    label: tileLabelFor(program, metricKey, tile.label),
     currentValue: isSum
       ? sumBy(visibleFeatures, getValue)
       : floorAreaWeightedAverage(visibleFeatures, getValue),
     unit: metricUnit(visibleFeatures, metricKey) ?? tile.unitFallback,
     direction: directionForMetric(visibleFeatures, metricKey),
-    rollupHint: isSum ? 'Portfolio total' : 'Floor-area weighted avg',
+    rollupHint: isSum ? 'Portfolio total of covered assets' : 'Floor-area weighted avg',
     targetLabel: targetLabelFor(program, metricKey),
   };
 }
@@ -318,6 +634,8 @@ function thresholdShareRollup(metricKey, visibleFeatures, rollup) {
     unit: rollup.unit ?? '%',
     // A compliance share always improves upward, whatever the metric's direction.
     direction: 'Higher is better',
+    met,
+    total,
     // "at or above 100%" is a nonsense way to describe a pass/fail requirement.
     rollupHint: isDerivedMetric(metricKey)
       ? `${met} of ${total} passing`
@@ -354,12 +672,13 @@ function complianceTile(visibleFeatures) {
 
 /**
  * Stats tiles for the assets in view. Only metrics the active program governs
- * get a tile; portfolio size and LL97 exposure are always-on context.
+ * get a tile. LL97 $ exposure is LL97-program context only — not always-on.
  */
 export function computeAggregateStats(visibleFeatures, options) {
   const { program, programGoals, metricBandFor, scoreFor, now = new Date() } = options;
   const count = visibleFeatures.length;
   const governed = governedMetricKeys(program).filter((key) => METRIC_TILES[key]);
+  const showLl97Exposure = program?.id === 'll97_2030';
 
   if (count === 0) {
     const stats = {
@@ -370,12 +689,17 @@ export function computeAggregateStats(visibleFeatures, options) {
         goal: null,
       },
     };
-    stats.programCompletion = emptyStat(`${program.label} completion`);
+    stats.programCompletion = emptyStat(topLevelScoreFor(program).label);
     stats.targetsMet = emptyStat('Assets meeting all targets');
     for (const key of governed) {
-      stats[key] = emptyStat(portfolioRollupFor(program, key)?.label ?? METRIC_TILES[key].label);
+      stats[key] = emptyStat(
+        portfolioRollupFor(program, key)?.label ??
+          tileLabelFor(program, key, METRIC_TILES[key].label)
+      );
     }
-    stats.compliance = emptyStat('LL97 exposure (2030)');
+    if (showLl97Exposure) {
+      stats.compliance = emptyStat('LL97 exposure (2030)');
+    }
     return stats;
   }
 
@@ -394,7 +718,10 @@ export function computeAggregateStats(visibleFeatures, options) {
     programCompletion: programCompletionTile(
       program,
       metricStats.map(([, stat]) => stat),
-      now
+      now,
+      programGoals,
+      visibleFeatures,
+      scoreFor
     ),
     targetsMet: targetsMetTile(visibleFeatures, program, scoreFor),
   };
@@ -403,7 +730,9 @@ export function computeAggregateStats(visibleFeatures, options) {
     stats[key] = stat;
   }
 
-  stats.compliance = complianceTile(visibleFeatures);
+  if (showLl97Exposure) {
+    stats.compliance = complianceTile(visibleFeatures);
+  }
 
   return stats;
 }

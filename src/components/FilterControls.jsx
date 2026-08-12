@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { useMapState } from '../context/MapStateContext';
-import { METRICS } from '../data/colorScale';
 import {
   activeFieldCount,
   FRESHNESS_OPTIONS,
@@ -8,24 +7,24 @@ import {
   HIDE_FIELDS,
 } from '../data/filterSchema';
 import { fmtNumber } from '../data/format';
-import { GOAL_PROGRAMS } from '../data/goalPrograms';
+import { GOAL_PROGRAMS, mapScaleFor } from '../data/goalPrograms';
 
 const fieldByKey = (fields) => Object.fromEntries(fields.map((f) => [f.key, f]));
-const HIDE = fieldByKey(HIDE_FIELDS);
 const GREY = fieldByKey(GREY_FIELDS);
 
 const PROPERTY_FIELDS = HIDE_FIELDS.filter((f) => f.group === 'property');
 const CERT_FIELDS = HIDE_FIELDS.filter((f) => f.group === 'cert');
 
-export const GOAL_PROGRAM_FILTER_FIELDS = HIDE_FIELDS.filter((f) => f.group === 'performance');
+export const BAND_FILTER_FIELDS = HIDE_FIELDS.filter((f) => f.key === 'band');
 const LOCATION_FILTER_FIELDS = PROPERTY_FIELDS.filter((f) => f.key === 'city');
 const BUILDING_FILTER_FIELDS = PROPERTY_FIELDS.filter(
   (f) => f.key === 'propertyType' || f.key === 'floorArea'
 );
 const CERTIFICATION_FILTER_FIELDS = CERT_FIELDS;
 
-// Everything outside the Goal Program dropdown lives in the single Filters menu.
+// Everything outside the Goal Program menu lives in the single Filters menu.
 export const FILTER_HIDE_FIELDS = [
+  ...BAND_FILTER_FIELDS,
   ...LOCATION_FILTER_FIELDS,
   ...BUILDING_FILTER_FIELDS,
   ...CERTIFICATION_FILTER_FIELDS,
@@ -131,42 +130,46 @@ function useHideFieldRenderer() {
 }
 
 export function GoalProgramPanel() {
-  const { governedMetrics, goalProgram, setGoalProgram, hide, hideMeta, setHideField } =
-    useMapState();
-
-  const targets = METRICS.filter((m) => governedMetrics.includes(m.key));
+  const { goalProgram, setGoalProgram } = useMapState();
 
   return (
     <div className="filter-controls">
-      <p className="hint">Sets what every target means and drives building color</p>
-      <select value={goalProgram.id} onChange={(e) => setGoalProgram(e.target.value)}>
-        {GOAL_PROGRAMS.map((program) => (
-          <option key={program.id} value={program.id}>
-            {program.label}
-          </option>
-        ))}
-      </select>
-      <p className="program-purpose">{goalProgram.purpose}</p>
-      <p className="program-authority">Authority: {goalProgram.authority}</p>
-
-      <h3>Color</h3>
-      <p className="hint">
-        How close each asset is to{' '}
-        {targets.length === 1 ? 'this target' : `all ${targets.length} of these targets`}
-      </p>
-      <ul className="program-target-list">
-        {targets.map((m) => (
-          <li key={m.key}>{m.label}</li>
-        ))}
-      </ul>
-
-      <MultiField
-        field={HIDE.band}
-        options={hideMeta.band.options}
-        selected={hide.band}
-        onChange={(v) => setHideField('band', v)}
-        hint="Progress against the active program"
-      />
+      <button
+        type="button"
+        className="goal-program-add-ai"
+        onClick={() => {}}
+        title="Example — not wired up yet"
+      >
+        <svg className="goal-program-add-ai-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path
+            d="M12 2l1.2 6.3L20 10l-6.8 1.7L12 18l-1.2-6.3L4 10l6.8-1.7L12 2z"
+            fill="currentColor"
+          />
+        </svg>
+        Add program with AI
+      </button>
+      <div className="goal-program-cards" role="radiogroup" aria-label="Goal program">
+        {GOAL_PROGRAMS.map((program) => {
+          const active = program.id === goalProgram.id;
+          return (
+            <button
+              key={program.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              className={`goal-program-card${active ? ' goal-program-card--active' : ''}`}
+              onClick={() => setGoalProgram(program.id)}
+            >
+              <span className="goal-program-card-label" title={program.label}>
+                {program.label}
+              </span>
+              <span className="goal-program-card-purpose" title={program.purpose}>
+                {program.purpose}
+              </span>
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -188,6 +191,29 @@ function FilterSection({ title, activeCount, expanded, onToggle, children }) {
       </button>
       {expanded && <div className="filter-section-body">{children}</div>}
     </section>
+  );
+}
+
+function BandFields() {
+  const { hide, hideMeta, setHideField, goalProgram } = useMapState();
+  const mapScale = mapScaleFor(goalProgram);
+
+  return (
+    <>
+      <p className="hint">{mapScale.legendTitle}</p>
+      <div className="checkbox-list">
+        {hideMeta.band.options.map((opt) => (
+          <label key={opt.value} className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={hide.band.includes(opt.value)}
+              onChange={() => setHideField('band', toggle(hide.band, opt.value))}
+            />
+            <span>{opt.label}</span>
+          </label>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -224,7 +250,10 @@ function DataConfidenceFields() {
 
   return (
     <>
-      <p className="hint">Failing any active check renders the building grey</p>
+      <p className="hint">
+        The active program already greys assets below its coverage floor. Extra checks here
+        grey additional buildings.
+      </p>
       <label className="checkbox-row">
         <input
           type="checkbox"
@@ -278,6 +307,12 @@ function DataConfidenceFields() {
 }
 
 const FILTER_SECTIONS = [
+  {
+    key: 'bands',
+    title: 'Show only bands',
+    fields: BAND_FILTER_FIELDS,
+    Fields: BandFields,
+  },
   {
     key: 'location',
     title: 'Location',

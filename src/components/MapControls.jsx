@@ -6,13 +6,15 @@ import {
   GREY_FIELDS,
 } from '../data/filterSchema';
 import { DEFAULT_PROGRAM_ID } from '../data/goalPrograms';
+import { Sparkles } from 'lucide-react';
 import SearchBox from './SearchBox';
 import {
   FILTER_HIDE_FIELDS,
   FiltersPanel,
-  GOAL_PROGRAM_FILTER_FIELDS,
   GoalProgramPanel,
 } from './FilterControls';
+import ReportsModal from './ReportsModal';
+import AgentChatModal from './AgentChatModal';
 
 function FilterDropdown({
   label,
@@ -23,6 +25,7 @@ function FilterDropdown({
   onReset,
   children,
   panelRef,
+  panelClassName = 'controls-popover--filters',
 }) {
   return (
     <div className="controls-popover-wrap" ref={panelRef}>
@@ -37,7 +40,7 @@ function FilterDropdown({
         {activeCount > 0 ? ` (${activeCount})` : ''}
       </button>
       {open && (
-        <div className="controls-popover controls-popover--filters">
+        <div className={`controls-popover ${panelClassName}`}>
           <div className="controls-popover-header">
             <strong>{label}</strong>
             <button type="button" className="link-button" onClick={onReset}>
@@ -69,6 +72,7 @@ export default function MapControls() {
   } = useMapState();
 
   const [openPanel, setOpenPanel] = useState(null);
+  const [openModal, setOpenModal] = useState(null);
   const searchRef = useRef(null);
   const goalProgramRef = useRef(null);
   const filtersRef = useRef(null);
@@ -100,7 +104,11 @@ export default function MapControls() {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
 
-  const goalProgramActiveCount = activeFieldCount(GOAL_PROGRAM_FILTER_FIELDS, hide, hideMeta);
+  const openAppModal = (modal) => {
+    setOpenPanel(null);
+    setOpenModal(modal);
+  };
+
   const filtersActiveCount =
     activeFieldCount(FILTER_HIDE_FIELDS, hide, hideMeta) +
     activeFieldCount(GREY_FIELDS, grey, greyMeta);
@@ -113,7 +121,6 @@ export default function MapControls() {
 
   const resetGoalProgram = () => {
     setGoalProgram(DEFAULT_PROGRAM_ID);
-    resetFields(GOAL_PROGRAM_FILTER_FIELDS);
   };
 
   const resetFilters = () => {
@@ -126,43 +133,16 @@ export default function MapControls() {
   return (
     <div className="map-controls">
       <div className="map-controls-left">
-        <div className="controls-popover-wrap" ref={searchRef}>
-          <button
-            type="button"
-            className="controls-button"
-            onClick={() => togglePanel('search')}
-            aria-expanded={openPanel === 'search'}
-          >
-            Search
-          </button>
-          {openPanel === 'search' && (
-            <div className="controls-popover controls-popover--search">
-              <SearchBox autoFocus onSelect={() => setOpenPanel(null)} />
-            </div>
-          )}
-        </div>
-
         <FilterDropdown
           label="Goal Program"
           value={goalProgram.label}
-          activeCount={goalProgramActiveCount}
           open={openPanel === 'goalProgram'}
           onToggle={() => togglePanel('goalProgram')}
           onReset={resetGoalProgram}
           panelRef={goalProgramRef}
+          panelClassName="controls-popover--goal-program"
         >
           <GoalProgramPanel />
-        </FilterDropdown>
-
-        <FilterDropdown
-          label="Filters"
-          activeCount={filtersActiveCount}
-          open={openPanel === 'filters'}
-          onToggle={() => togglePanel('filters')}
-          onReset={resetFilters}
-          panelRef={filtersRef}
-        >
-          <FiltersPanel />
         </FilterDropdown>
 
         <div className="view-mode-toggle" role="group" aria-label="View mode">
@@ -180,7 +160,7 @@ export default function MapControls() {
             aria-pressed={viewMode === 'grid'}
             onClick={() => setViewMode('grid')}
           >
-            Grid
+            Pack
           </button>
           <button
             type="button"
@@ -192,12 +172,70 @@ export default function MapControls() {
           </button>
         </div>
       </div>
+
       <div className="map-controls-status">
         <span className="controls-readout">
           Showing {visibleFeatures.length} of {features.length}
           {greyedCount > 0 && ` · ${greyedCount} greyed`}
         </span>
       </div>
+
+      <div className="map-controls-right">
+        <div className="controls-popover-wrap" ref={searchRef}>
+          <button
+            type="button"
+            className="controls-button"
+            onClick={() => togglePanel('search')}
+            aria-expanded={openPanel === 'search'}
+          >
+            Search
+          </button>
+          {openPanel === 'search' && (
+            <div className="controls-popover controls-popover--search controls-popover--end">
+              <SearchBox autoFocus onSelect={() => setOpenPanel(null)} />
+            </div>
+          )}
+        </div>
+
+        <FilterDropdown
+          label="Filters"
+          activeCount={filtersActiveCount}
+          open={openPanel === 'filters'}
+          onToggle={() => togglePanel('filters')}
+          onReset={resetFilters}
+          panelRef={filtersRef}
+          panelClassName="controls-popover--filters controls-popover--end"
+        >
+          <FiltersPanel />
+        </FilterDropdown>
+
+        <button
+          type="button"
+          className="controls-button"
+          onClick={() => openAppModal('reports')}
+          aria-haspopup="dialog"
+          aria-expanded={openModal === 'reports'}
+        >
+          Report
+        </button>
+
+        <span className="controls-ai-split" aria-hidden="true" />
+
+        <button
+          type="button"
+          className="agent-chat-button"
+          onClick={() => openAppModal('chat')}
+          aria-haspopup="dialog"
+          aria-expanded={openModal === 'chat'}
+          aria-label="Open AI agent chat"
+          title="Ask the agent"
+        >
+          <Sparkles aria-hidden="true" />
+        </button>
+      </div>
+
+      <ReportsModal open={openModal === 'reports'} onClose={() => setOpenModal(null)} />
+      <AgentChatModal open={openModal === 'chat'} onClose={() => setOpenModal(null)} />
     </div>
   );
 }

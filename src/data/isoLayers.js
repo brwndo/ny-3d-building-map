@@ -84,8 +84,8 @@ export function createIsoClusterLabelsLayer(groups) {
     getAlignmentBaseline: 'top',
     outlineWidth: 2,
     outlineColor: [247, 246, 243, 230],
-    fontFamily: 'system-ui, sans-serif',
-    fontWeight: 500,
+    fontFamily: 'Geist Sans, system-ui, sans-serif',
+    fontWeight: 400,
   });
 }
 
