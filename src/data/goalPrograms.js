@@ -141,6 +141,34 @@ function yearOf(deadline) {
   return Number.isFinite(year) ? year : null;
 }
 
+/** Invented building-type cohort water intensity (gal / sf / year). */
+export const WATER_COHORT_GAL_PER_SF = {
+  Manufacturing: 22,
+  'Cold Storage': 14,
+  'Flex Industrial': 12,
+  'Light Industrial': 11,
+  'Logistics/Cross-dock': 9,
+  'Warehouse/Distribution': 8,
+  'Mixed-Use Residential/Commercial': 16,
+  Unknown: 12,
+};
+
+/** Beat the cohort baseline by this share (10%). */
+export const WATER_COHORT_REDUCTION = 0.1;
+
+export function waterCohortIntensity(propertyType) {
+  return (
+    WATER_COHORT_GAL_PER_SF[propertyType] ?? WATER_COHORT_GAL_PER_SF.Unknown
+  );
+}
+
+/** Absolute gal target: cohort intensity × (1 − 10%) × floor area. */
+export function waterCohortTarget(props) {
+  if (props.floorArea == null || !Number.isFinite(props.floorArea)) return null;
+  const intensity = waterCohortIntensity(props.propertyType);
+  return intensity * (1 - WATER_COHORT_REDUCTION) * props.floorArea;
+}
+
 /**
  * A pass/fail requirement: the asset either satisfies it or it does not, and
  * the portfolio is graded on the share that do. Averaging a predicate would be
@@ -343,6 +371,43 @@ export const GOAL_PROGRAMS = [
         // Ratio to a zero target is undefined; measure travel from baseline.
         progressModel: 'trajectory',
         assetTarget: () => 0,
+      },
+    },
+  },
+  {
+    id: 'waterCohort2028',
+    label: 'Water vs Building Type Cohorts',
+    purpose: 'Beat building-type cohort water intensity by 10%.',
+    goal: '100% of assets ≤10% under their building-type cohort water use by 2028',
+    authority: 'Portfolio water stewardship',
+    editable: false,
+    deadlineYear: 2028,
+    confidenceCoverage: 0.65,
+    mapScale: binaryMapScale({
+      legendTitle: 'Water vs building-type cohort (−10%)',
+      clearBand: 'Under cohort target',
+      failBand: 'Over cohort target',
+      clearMeaning: 'at or under 90% of cohort gal/sf × area',
+      failMeaning: 'above 90% of cohort gal/sf × area',
+    }),
+    topLevelScore: {
+      type: TOP_LEVEL_SCORE_TYPES.complianceShare,
+      overviewChart: OVERVIEW_CHART_TYPES.complianceSplit,
+      label: 'Under cohort target',
+      hint: 'Share of assets at or under 90% of their building-type cohort water use',
+      splitLabels: { met: 'Under cohort target', unmet: 'Over cohort target' },
+    },
+    metrics: {
+      water: {
+        targetLabel: 'Cohort −10% water use',
+        tileLabel: 'Water use vs building-type cohort',
+        about:
+          'Each asset’s water use (gal) is compared with an invented building-type cohort intensity (gal/sf) × floor area, then reduced by 10%. Assets at or under that bar are Under cohort target; others are Over. Deadline is 2028.',
+        progressModel: 'ratio',
+        assetTarget: waterCohortTarget,
+        applies: (props) =>
+          props.floorArea != null && props.metrics?.water?.currentValue != null,
+        exemptLabel: 'Missing water use or floor area',
       },
     },
   },

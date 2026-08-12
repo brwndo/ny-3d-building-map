@@ -4,7 +4,7 @@ import { bandCss, GREY } from '../data/colorScale';
 import { confidenceCoveragePct, mapScaleFor, uncoveredAssetCount } from '../data/goalPrograms';
 
 export default function Legend() {
-  const { goalProgram, programContext, visibleFeatures } = useMapState();
+  const { goalProgram, programContext, visibleFeatures, confidenceGreyEnabled } = useMapState();
   const [collapsed, setCollapsed] = useState(false);
 
   const mapScale = mapScaleFor(goalProgram);
@@ -45,10 +45,12 @@ export default function Legend() {
                 <span>Not covered by this program ({uncovered})</span>
               </div>
             )}
-            <div className="legend-row">
-              <span className="legend-swatch" style={{ background: `rgb(${GREY.join(',')})` }} />
-              <span>Below {confidenceCoveragePct(goalProgram)}% data coverage</span>
-            </div>
+            {confidenceGreyEnabled ? (
+              <div className="legend-row">
+                <span className="legend-swatch" style={{ background: `rgb(${GREY.join(',')})` }} />
+                <span>Below {confidenceCoveragePct(goalProgram)}% data coverage</span>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

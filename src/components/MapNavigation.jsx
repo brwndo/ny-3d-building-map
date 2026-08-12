@@ -1,6 +1,12 @@
 import MapCompass from './MapCompass';
 
-export default function MapNavigation({ bearing, onResetNorth, onZoomIn, onZoomOut }) {
+export default function MapNavigation({
+  bearing,
+  onResetNorth,
+  onZoomIn,
+  onZoomOut,
+  showCompass = true,
+}) {
   return (
     <div className="map-navigation">
       <div className="map-zoom-controls">
@@ -23,7 +29,7 @@ export default function MapNavigation({ bearing, onResetNorth, onZoomIn, onZoomO
           −
         </button>
       </div>
-      <MapCompass bearing={bearing} onResetNorth={onResetNorth} />
+      {showCompass ? <MapCompass bearing={bearing} onResetNorth={onResetNorth} /> : null}
     </div>
   );
 }

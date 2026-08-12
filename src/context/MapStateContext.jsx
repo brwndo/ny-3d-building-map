@@ -30,9 +30,11 @@ import {
 } from '../data/goalPrograms';
 
 function greyDefaultsForProgram(program) {
+  // Filters coverage starts off — program floor greying lives on
+  // confidenceGreyEnabled, not as a pre-checked Filters control.
   return {
     ...defaultsFor(GREY_FIELDS),
-    coverage: { enabled: true, value: confidenceCoveragePct(program) },
+    coverage: { enabled: false, value: confidenceCoveragePct(program) },
   };
 }
 
@@ -41,6 +43,8 @@ const MapStateContext = createContext(null);
 export function MapStateProvider({ buildings, boundary, counties, children }) {
   const [hide, setHide] = useState(() => defaultsFor(HIDE_FIELDS));
   const [grey, setGrey] = useState(() => greyDefaultsForProgram(getProgram(loadProgramId())));
+  // Program coverage floor greying — controlled from the Data confidence card.
+  const [confidenceGreyEnabled, setConfidenceGreyEnabled] = useState(true);
   const [selectedId, setSelectedId] = useState(null);
   const [flyToRequest, setFlyToRequest] = useState(null); // {coords, ts}
   const [viewMode, setViewMode] = useState('map'); // 'map' | 'grid' | 'iso'
@@ -93,10 +97,19 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     // Blockers and band vocabulary belong to the program that named them.
     setFocusMetricKey(null);
     setHide((prev) => ({ ...prev, band: [] }));
+    // Keep Filters coverage enabled-state as the user left it; only refresh
+    // the threshold so an optional Filters check matches the new program floor.
     setGrey((prev) => ({
       ...prev,
-      coverage: { enabled: true, value: confidenceCoveragePct(nextProgram) },
+      coverage: {
+        ...prev.coverage,
+        value: confidenceCoveragePct(nextProgram),
+      },
     }));
+  }, []);
+
+  const setConfidenceGrey = useCallback((enabled) => {
+    setConfidenceGreyEnabled(enabled);
   }, []);
 
   // Option lists and range bounds, derived from the loaded dataset. Band
@@ -143,9 +156,9 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
 
   const isGreyed = useCallback(
     (props) =>
-      belowConfidenceThreshold(props, goalProgram) ||
+      (confidenceGreyEnabled && belowConfidenceThreshold(props, goalProgram)) ||
       !passesConfidence(props, resolvedGrey, { now: loadedAt }),
-    [goalProgram, resolvedGrey, loadedAt]
+    [confidenceGreyEnabled, goalProgram, resolvedGrey, loadedAt]
   );
 
   const greyedCount = useMemo(
@@ -162,6 +175,7 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
 
   const resetFilters = () => {
     setHide(defaultsFor(HIDE_FIELDS));
+    setConfidenceGreyEnabled(true);
     setGrey(greyDefaultsForProgram(goalProgram));
   };
 
@@ -210,6 +224,8 @@ export function MapStateProvider({ buildings, boundary, counties, children }) {
     grey: resolvedGrey,
     greyMeta,
     setGreyField,
+    confidenceGreyEnabled,
+    setConfidenceGrey,
     isGreyed,
     greyedCount,
     activeHideCount,

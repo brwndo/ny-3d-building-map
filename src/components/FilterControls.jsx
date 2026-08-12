@@ -129,25 +129,36 @@ function useHideFieldRenderer() {
     );
 }
 
-export function GoalProgramPanel() {
+export function GoalProgramPanel({ onOpenCreate, onOpenAgent } = {}) {
   const { goalProgram, setGoalProgram } = useMapState();
 
   return (
     <div className="filter-controls">
-      <button
-        type="button"
-        className="goal-program-add-ai"
-        onClick={() => {}}
-        title="Example — not wired up yet"
-      >
-        <svg className="goal-program-add-ai-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <path
-            d="M12 2l1.2 6.3L20 10l-6.8 1.7L12 18l-1.2-6.3L4 10l6.8-1.7L12 2z"
-            fill="currentColor"
-          />
-        </svg>
-        Add program with AI
-      </button>
+      <div className="goal-program-create-row">
+        <button
+          type="button"
+          className="goal-program-add-ai"
+          onClick={onOpenCreate}
+        >
+          Create Program
+        </button>
+        {typeof onOpenAgent === 'function' ? (
+          <button
+            type="button"
+            className="goal-program-add-ai-secondary"
+            onClick={onOpenAgent}
+            title="Draft a program with the agent"
+          >
+            <svg className="goal-program-add-ai-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path
+                d="M12 2l1.2 6.3L20 10l-6.8 1.7L12 18l-1.2-6.3L4 10l6.8-1.7L12 2z"
+                fill="currentColor"
+              />
+            </svg>
+            Add with AI
+          </button>
+        ) : null}
+      </div>
       <div className="goal-program-cards" role="radiogroup" aria-label="Goal program">
         {GOAL_PROGRAMS.map((program) => {
           const active = program.id === goalProgram.id;

@@ -29,6 +29,13 @@ const REPORT_TYPES = [
     cadence: 'Annual',
   },
   {
+    id: 'water-cohort',
+    name: 'Water Cohort Progress',
+    description:
+      'Status vs building-type cohort water intensity (−10% bar by 2028), under/over counts, and assets still above the cohort target.',
+    cadence: 'Quarterly',
+  },
+  {
     id: 'custom',
     name: 'Internal Target Review',
     description: 'Status against the custom program’s targets for ENERGY STAR, GHG, EUI, water, and coverage.',
@@ -120,7 +127,12 @@ export default function ReportsModal({ open, onClose }) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const scopeLabel = scope === 'view' ? 'Assets in view' : 'Full portfolio';
+    const scopeLabel =
+      scope === 'view'
+        ? 'Assets in view'
+        : scope === 'live'
+          ? 'Live updating'
+          : 'Full portfolio';
     const next = {
       id: `rpt-${Date.now()}`,
       typeId,
@@ -145,7 +157,7 @@ export default function ReportsModal({ open, onClose }) {
       subtitle={
         view === 'list'
           ? 'Run a saved report or generate a new one from a template.'
-          : 'Name the report, pick a template, and choose which assets to include.'
+          : 'Name the report, pick a template, and choose how assets are selected.'
       }
       panelClassName="app-modal-panel--reports"
       headerActions={
@@ -255,6 +267,22 @@ export default function ReportsModal({ open, onClose }) {
               <span>
                 Full portfolio
                 <span className="reports-field-hint">{total} assets</span>
+              </span>
+            </label>
+            <label className="reports-radio">
+              <input
+                type="radio"
+                name="report-scope"
+                value="live"
+                checked={scope === 'live'}
+                onChange={() => setScope('live')}
+              />
+              <span>
+                Live updating
+                <span className="reports-field-hint">
+                  Assets that match this report’s criteria when it runs — not a fixed,
+                  recurring set
+                </span>
               </span>
             </label>
           </fieldset>

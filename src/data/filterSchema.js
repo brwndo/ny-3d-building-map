@@ -79,7 +79,8 @@ export const GREY_FIELDS = [
     kind: 'threshold',
     label: 'Data coverage at least',
     unit: '%',
-    // Coverage threshold stays at 65% when enabled; starts off so nothing is greyed on load.
+    // Starts off so Filters shows no active state on load. Program coverage
+    // greying is separate (confidenceGreyEnabled); this is an optional extra.
     default: { enabled: false, value: 65 },
     get: (p) => p.dataCoverage * 100,
   },

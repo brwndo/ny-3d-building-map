@@ -118,7 +118,7 @@ export default function GridView() {
           );
         })}
       </div>
-      <div className="grid-view-caption">Bubble area ∝ floor area</div>
+      <div className="view-encoding-caption">Bubble area = floor area</div>
       {hoverInfo && <HoverPopup info={hoverInfo} />}
     </div>
   );

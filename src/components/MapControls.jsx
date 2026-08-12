@@ -5,7 +5,7 @@ import {
   defaultsFor,
   GREY_FIELDS,
 } from '../data/filterSchema';
-import { DEFAULT_PROGRAM_ID } from '../data/goalPrograms';
+import { DEFAULT_PROGRAM_ID, confidenceCoveragePct } from '../data/goalPrograms';
 import { Sparkles } from 'lucide-react';
 import SearchBox from './SearchBox';
 import {
@@ -15,6 +15,7 @@ import {
 } from './FilterControls';
 import ReportsModal from './ReportsModal';
 import AgentChatModal from './AgentChatModal';
+import CreateProgramModal from './CreateProgramModal';
 
 function FilterDropdown({
   label,
@@ -126,6 +127,13 @@ export default function MapControls() {
   const resetFilters = () => {
     resetFields(FILTER_HIDE_FIELDS);
     for (const field of GREY_FIELDS) {
+      if (field.key === 'coverage') {
+        setGreyField('coverage', {
+          enabled: false,
+          value: confidenceCoveragePct(goalProgram),
+        });
+        continue;
+      }
       setGreyField(field.key, defaultsFor([field])[field.key]);
     }
   };
@@ -142,7 +150,10 @@ export default function MapControls() {
           panelRef={goalProgramRef}
           panelClassName="controls-popover--goal-program"
         >
-          <GoalProgramPanel />
+          <GoalProgramPanel
+            onOpenCreate={() => openAppModal('createProgram')}
+            onOpenAgent={() => openAppModal('chat')}
+          />
         </FilterDropdown>
 
         <div className="view-mode-toggle" role="group" aria-label="View mode">
@@ -236,6 +247,10 @@ export default function MapControls() {
 
       <ReportsModal open={openModal === 'reports'} onClose={() => setOpenModal(null)} />
       <AgentChatModal open={openModal === 'chat'} onClose={() => setOpenModal(null)} />
+      <CreateProgramModal
+        open={openModal === 'createProgram'}
+        onClose={() => setOpenModal(null)}
+      />
     </div>
   );
 }

@@ -223,7 +223,9 @@ export default function IsoView() {
         onResetNorth={resetView}
         onZoomIn={zoomIn}
         onZoomOut={zoomOut}
+        showCompass={false}
       />
+      <div className="view-encoding-caption">Height = # of floors</div>
     </div>
   );
 }

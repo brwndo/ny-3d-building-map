@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMapState } from '../context/MapStateContext';
 import {
   computeAggregateStats,
@@ -600,25 +600,127 @@ function CompletionOverview({ completion, now, legendTitle, programGoal }) {
   );
 }
 
-/** Prototype-only copy — not wired to a model. */
-function AiInsightsCard({ programLabel, program, bandBreakdown, onViewAssets }) {
-  const [dismissed, setDismissed] = useState(false);
+/** Prototype-only copy — not wired to a model. Mix of next-step vs do-nothing stakes. */
+function buildDirectionalInsight({
+  program,
+  programLabel,
+  bandBreakdown,
+  completion,
+  compliance,
+  features,
+}) {
   const rows = bandBreakdown?.rows ?? [];
-  const riskCount = rows
-    .filter((r) => isAtRiskBand(r.band, program))
-    .reduce((sum, r) => sum + r.count, 0);
   const scale = mapScaleFor(program);
   const worstBand = scale.bands.find((b) => b.tone === 'worst')?.key;
   const worstCount = rows.find((r) => r.band === worstBand)?.count ?? 0;
+  const riskCount = rows
+    .filter((r) => isAtRiskBand(r.band, program))
+    .reduce((sum, r) => sum + r.count, 0);
+  const splitUnmet = completion?.split?.unmet ?? worstCount;
+  const deadlineYear = program.deadlineYear;
+  const deadlineLabel = deadlineYear != null ? `Dec ${deadlineYear}` : 'the deadline';
+  const conf = confidenceBreakdown(features ?? [], program);
+  const assetsWord = (n) => (n === 1 ? 'asset' : 'assets');
+  const areWord = (n) => (n === 1 ? 'is' : 'are');
+
+  switch (program.id) {
+    case 'll97_2030': {
+      // Consequence-led: fines if nothing changes.
+      if (splitUnmet > 0) {
+        const exposure =
+          compliance?.value && compliance.value !== '$0'
+            ? ` — about ${compliance.value} at $268/mtCO₂e`
+            : ' at $268/mtCO₂e';
+        return `If nothing changes by ${deadlineLabel}, ${splitUnmet} over-cap ${assetsWord(splitUnmet)} keep the portfolio in LL97 penalty exposure${exposure}. Cut Scope 1+2 at those buildings to get under the 2030–2034 caps.`;
+      }
+      return `Every LL97-applicable asset in view is under the cap. Keep coverage and filings current so ${deadlineLabel} does not reopen penalty risk.`;
+    }
+    case 'energyStar75': {
+      // Action-led: how to clear the 75 gate.
+      if (splitUnmet > 0) {
+        return `Raise ENERGY STAR scores at the ${splitUnmet} ${assetsWord(splitUnmet)} still below 75 — commissioning, envelope, and HVAC tuning usually move the needle fastest — to hit 100% eligibility by ${deadlineLabel}.`;
+      }
+      return `All assets in view clear the 75+ score gate. Lock in 12-month whole-building data so certification eligibility stays intact through ${deadlineLabel}.`;
+    }
+    case 'gresbReady': {
+      // Action-led: attack the weakest submission gate first.
+      const gates = completion?.gates ?? [];
+      const shortGates = gates
+        .filter((g) => !g.metGate)
+        .sort((a, b) => (a.current ?? 0) - (b.current ?? 0));
+      const weakest = shortGates[0];
+      if (weakest) {
+        const shortBy =
+          weakest.chart === METRIC_TILE_CHART_TYPES.assetCount && weakest.total > 0
+            ? Math.max(0, Math.ceil(weakest.target * weakest.total) - weakest.met)
+            : null;
+        const gap =
+          shortBy != null && shortBy > 0
+            ? ` — ${shortBy} more ${assetsWord(shortBy)} still needed`
+            : '';
+        return `GRESB readiness is held back most by “${weakest.label}”${gap}. Close that bar first so the rest of the ${deadlineLabel} submission package can clear.`;
+      }
+      if (conf.below > 0) {
+        return `${conf.below} ${assetsWord(conf.below)} sit under the ${conf.floorPct}% coverage floor. Lift coverage there before the ${deadlineLabel} GRESB window so evidence stays defensible.`;
+      }
+      return `Submission gates look clear for assets in view. Re-check verified data and certifications before the ${deadlineLabel} filing so nothing regresses.`;
+    }
+    case 'netZero2050': {
+      // Consequence-led: trajectory stalls without cuts.
+      if (riskCount > 0 || worstCount > 0) {
+        const n = Math.max(riskCount, worstCount);
+        return `Without deeper Scope 1+2 cuts at the ${n} off-pace ${assetsWord(n)}, today’s emissions path misses net zero by 2050. Sequence fuel switching and load reduction on those buildings now.`;
+      }
+      return `Trajectory is on pace for assets in view. Keep annual abatement projects funded so progress does not stall before 2050.`;
+    }
+    case 'waterCohort2028': {
+      // Action-led: fix overshooting sites.
+      if (splitUnmet > 0) {
+        return `Bring the ${splitUnmet} over-cohort ${assetsWord(splitUnmet)} under the −10% water bar with leak repair, fixture upgrades, and process-water cuts before ${deadlineLabel}.`;
+      }
+      return `Every asset in view beats its building-type cohort water target. Hold intensity with metering so ${deadlineLabel} does not slip.`;
+    }
+    case 'custom':
+    default: {
+      // Mix: blockers → action; otherwise hold the line.
+      if (riskCount > 0 || worstCount > 0) {
+        const n = Math.max(riskCount, worstCount);
+        return `${n} ${assetsWord(n)} ${areWord(n)} still short of your custom targets. Open those blockers and clear them in deadline order — that is the shortest path to the goals you set.`;
+      }
+      if (conf.below > 0) {
+        return `${programLabel} looks on track, but ${conf.below} ${assetsWord(conf.below)} sit under the coverage floor. Raise data quality there so reported progress stays auditable.`;
+      }
+      return `${programLabel} is clear for assets in view. Keep targets and deadlines current so the next reporting cycle does not invent new gaps.`;
+    }
+  }
+}
+
+/** Prototype-only copy — not wired to a model. */
+function AiInsightsCard({
+  programLabel,
+  program,
+  bandBreakdown,
+  completion,
+  compliance,
+  features,
+  onViewAssets,
+}) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    setDismissed(false);
+  }, [program.id]);
 
   if (dismissed) return null;
 
-  const body =
-    worstCount > 0
-      ? `Only ${worstCount} asset${worstCount === 1 ? '' : 's'} ${worstCount === 1 ? 'is' : 'are'} in ${worstBand} on ${programLabel}.`
-      : riskCount > 0
-        ? `${riskCount} assets need attention on ${programLabel}. Focusing those blockers usually recovers the most progress.`
-        : `${programLabel} looks strong for assets in view. Keep data coverage fresh before the next reporting window.`;
+  const body = buildDirectionalInsight({
+    program,
+    programLabel,
+    bandBreakdown,
+    completion,
+    compliance,
+    features,
+  });
 
   return (
     <section className="stats-ai-card" aria-label="AI insights">
@@ -660,6 +762,7 @@ function UnitBar({ count, total, color }) {
 }
 
 function DataConfidenceCard({ program, features }) {
+  const { confidenceGreyEnabled, setConfidenceGrey } = useMapState();
   const breakdown = confidenceBreakdown(features, program);
   if (breakdown.total === 0) return null;
 
@@ -672,10 +775,10 @@ function DataConfidenceCard({ program, features }) {
       color: bandCss('Target Met'),
     },
     {
-      label: 'Below floor — grey',
+      label: confidenceGreyEnabled ? 'Below floor — grey' : 'Below floor',
       count: breakdown.below,
       pct: breakdown.below / breakdown.total,
-      color: greyCss,
+      color: confidenceGreyEnabled ? greyCss : '#c8c8c8',
     },
   ];
 
@@ -688,8 +791,10 @@ function DataConfidenceCard({ program, features }) {
             label="About data confidence"
             content={
               <p>
-                Assets under {breakdown.floorPct}% data coverage render grey on the map for this
-                program. Color is withheld until coverage clears the floor.
+                Assets under {breakdown.floorPct}% data coverage
+                {confidenceGreyEnabled
+                  ? ' render grey on the map for this program. Color is withheld until coverage clears the floor.'
+                  : ' are flagged here, but map color stays on while greying is off.'}
               </p>
             }
           >
@@ -698,8 +803,20 @@ function DataConfidenceCard({ program, features }) {
             </button>
           </Tooltip>
         </div>
-        <span className="stats-section-meta">Coverage ≥ {breakdown.floorPct}%</span>
+        <label className="confidence-grey-toggle">
+          <span>Grey out</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={confidenceGreyEnabled}
+            onChange={(e) => setConfidenceGrey(e.target.checked)}
+            aria-label="Grey out assets below the data confidence floor"
+          />
+        </label>
       </div>
+      <p className="stats-section-meta confidence-floor-meta">
+        Coverage ≥ {breakdown.floorPct}%
+      </p>
       <div className="band-breakdown-list">
         {rows.map((row) => (
           <div key={row.label} className="band-breakdown-row">
@@ -920,6 +1037,9 @@ export default function DashboardStats() {
             programLabel={goalProgram.label}
             program={goalProgram}
             bandBreakdown={bandBreakdown}
+            completion={stats.programCompletion}
+            compliance={stats.compliance}
+            features={visibleFeatures}
             onViewAssets={viewAssets}
           />
           {stats.programCompletion?.overviewChart !== OVERVIEW_CHART_TYPES.complianceSplit ? (
