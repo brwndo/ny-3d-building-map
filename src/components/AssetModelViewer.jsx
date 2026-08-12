@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
 
-const MODEL_URL = '/tinker.obj';
+const MODEL_URL = `${import.meta.env.BASE_URL}tinker.obj`;
 /** Neutral white so the model is not read as a data/status color. */
 const MODEL_COLOR = 0xf4f4f5;
 const TARGET_SIZE = 2.2;
